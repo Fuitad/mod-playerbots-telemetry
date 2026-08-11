@@ -1,0 +1,4 @@
+[worldserver]
+
+# Maximum size in bytes of the complete telemetry response.
+PlayerbotsTelemetry.MaxPayloadBytes = 1048576
