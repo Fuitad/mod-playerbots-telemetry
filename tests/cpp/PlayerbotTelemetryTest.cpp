@@ -227,11 +227,20 @@ TEST(PlayerbotTelemetryTest, EconomySerializesBoundedChainsActorsCapitalAndOutco
         .reagents = {{2447u, 3u}, {765u, 1u}},
     });
     source.trace = {
-        .generation = 2u,
-        .totalCount = 3u,
+        .generation = 3u,
+        .totalCount = 4u,
         .truncatedCount = 1u,
         .events =
             {
+                {
+                    .publicId = "evt_0011223344556677",
+                    .sequence = 1u,
+                    .actorGuid = 42u,
+                    .itemId = 2447u,
+                    .quantity = 3u,
+                    .occurredAt = 1'005u,
+                    .kind = EconomyTraceKind::Gathered,
+                },
                 {
                     .publicId = "evt_0123456789abcdef",
                     .chainPublicId = "chn_0123456789abcdef",
@@ -345,9 +354,10 @@ TEST(PlayerbotTelemetryTest, EconomySerializesBoundedChainsActorsCapitalAndOutco
                         R"("professionSkillId":182,"recipeSpellId":9001,"outputItemId":8001,"outputQuantity":2)"),
               std::string::npos);
     EXPECT_NE(json.find(R"("reagents":[{"itemId":2447,"quantity":3},{"itemId":765,"quantity":1}])"), std::string::npos);
-    EXPECT_NE(json.find(R"("trace":{"generation":2,"totalCount":3,"truncatedCount":1,"events":[{)"
-                        R"("publicId":"evt_0123456789abcdef")"),
+    EXPECT_NE(json.find(R"("trace":{"generation":3,"totalCount":4,"truncatedCount":1,"events":[{)"
+                        R"("publicId":"evt_0011223344556677")"),
               std::string::npos);
+    EXPECT_NE(json.find(R"("kind":"gathered")"), std::string::npos);
     EXPECT_NE(json.find(R"("kind":"crafted")"), std::string::npos);
     EXPECT_NE(json.find(R"("kind":"final_use","finalUse":"consumed")"), std::string::npos);
     EXPECT_NE(json.find(R"("references":[{"marketId":7,"substitutionGroup":"herbs","unitPriceCopper":125,)"

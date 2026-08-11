@@ -324,6 +324,8 @@ std::string_view TraceKindName(EconomyTraceKind value)
 {
     switch (value)
     {
+        case EconomyTraceKind::Gathered:
+            return "gathered";
         case EconomyTraceKind::Crafted:
             return "crafted";
         case EconomyTraceKind::Listed:
@@ -334,6 +336,8 @@ std::string_view TraceKindName(EconomyTraceKind value)
             return "delivered";
         case EconomyTraceKind::SaleSettled:
             return "sale_settled";
+        case EconomyTraceKind::Expired:
+            return "expired";
         case EconomyTraceKind::FinalUse:
             return "final_use";
     }
@@ -356,6 +360,8 @@ std::string_view FinalUseName(EconomyFinalUseKind value)
             return "transformed";
         case EconomyFinalUseKind::Vendored:
             return "vendored";
+        case EconomyFinalUseKind::Learned:
+            return "learned";
         case EconomyFinalUseKind::Recovered:
             return "recovered";
         case EconomyFinalUseKind::Lost:
@@ -766,7 +772,8 @@ std::string PlayerbotTelemetry::SerializeEconomy(PlayerbotEconomyTelemetrySource
         out << ",\"quantity\":" << event.quantity << ",\"participants\":[";
         out << "{\"role\":";
         std::string_view role = "producer";
-        if (event.kind == EconomyTraceKind::Listed || event.kind == EconomyTraceKind::SaleSettled)
+        if (event.kind == EconomyTraceKind::Listed || event.kind == EconomyTraceKind::SaleSettled ||
+            event.kind == EconomyTraceKind::Expired)
             role = "seller";
         else if (event.kind == EconomyTraceKind::Purchased || event.kind == EconomyTraceKind::Delivered)
             role = "buyer";
