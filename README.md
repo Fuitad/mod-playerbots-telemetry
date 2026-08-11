@@ -21,7 +21,8 @@ interfaces and never grants gameplay authority to a telemetry caller.
 ## Configuration
 
 Copy `conf/mod_playerbots_telemetry.conf.dist` to the server configuration directory and remove the `.dist` suffix.
-`PlayerbotsTelemetry.MaxPayloadBytes` bounds the complete serialized snapshot.
+`PlayerbotsTelemetry.MaxPayloadBytes` bounds the complete serialized snapshot. The default is two mebibytes so the
+current economy ledger and bot state fit in one response. Set the consuming collector to the same limit.
 
 ## Standalone verification
 

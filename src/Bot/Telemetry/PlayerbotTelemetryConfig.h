@@ -15,7 +15,7 @@
 
 struct PlayerbotTelemetrySettings
 {
-    std::uint32_t maxPayloadBytes = 1'048'576;
+    std::uint32_t maxPayloadBytes = 2'097'152;
 };
 
 template <class Lookup>
