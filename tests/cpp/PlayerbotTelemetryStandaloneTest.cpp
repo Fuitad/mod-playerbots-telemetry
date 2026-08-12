@@ -22,11 +22,8 @@ void Require(bool condition, std::string_view message)
 
 int main()
 {
-    PlayerbotTelemetrySettings const defaultSettings = LoadPlayerbotTelemetrySettings(
-        [](std::string_view) -> std::optional<std::string>
-        {
-            return std::nullopt;
-        });
+    PlayerbotTelemetrySettings const defaultSettings =
+        LoadPlayerbotTelemetrySettings([](std::string_view) -> std::optional<std::string> { return std::nullopt; });
     Require(defaultSettings.maxPayloadBytes == 2'097'152,
             "default maximum payload cannot carry the current economy snapshot");
 

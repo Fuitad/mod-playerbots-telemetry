@@ -426,6 +426,23 @@ TEST(PlayerbotTelemetryTest, EconomyCacheReusesSerializationUntilSourceGeneratio
     EXPECT_NE(evidenceAdded, rebuilt);
     EXPECT_NE(evidenceAdded.find(R"("prices":[{"marketId":7,"itemId":2447)"), std::string::npos);
 
+    source.actors.push_back({
+        .characterGuid = 42u,
+        .professions = {{.skillId = 182u,
+                         .currentRank = 150u,
+                         .maximumRank = 225u,
+                         .primary = true,
+                         .planned = true,
+                         .learned = true}},
+    });
+    EconomyChain chain;
+    chain.publicId = "chn_0123456789abcdef";
+    chain.marketId = 7u;
+    chain.group = EconomySubstitutionGroup::ExactReagent(8'001u);
+    chain.createdAt = 100u;
+    chain.updatedAt = 100u;
+    source.coordinator.chains.push_back(chain);
+    std::string const dependenciesAdded = cache.Resolve(source);
     source.recipes.push_back({
         .chainPublicId = "chn_0123456789abcdef",
         .actorGuid = 42u,
@@ -433,9 +450,10 @@ TEST(PlayerbotTelemetryTest, EconomyCacheReusesSerializationUntilSourceGeneratio
         .recipeSpellId = 9'001u,
         .outputItemId = 8'001u,
         .outputQuantity = 1u,
+        .reagents = {{2'447u, 1u}},
     });
     std::string const recipeAdded = cache.Resolve(source);
-    EXPECT_NE(recipeAdded, evidenceAdded);
+    EXPECT_NE(recipeAdded, dependenciesAdded);
     EXPECT_NE(recipeAdded.find(R"("recipeSpellId":9001)"), std::string::npos);
 
     source.trace.generation = 1u;
@@ -489,6 +507,18 @@ TEST(PlayerbotTelemetryTest, EconomyCapitalAndTruncationAccountForOmittedPositio
 TEST(PlayerbotTelemetryTest, EconomyClaimTruncationKeepsActiveLeaseVisible)
 {
     PlayerbotEconomyTelemetrySource source;
+    EconomyChain chain;
+    chain.publicId = "chn_ffffffffffffffff";
+    chain.marketId = 7u;
+    chain.group = EconomySubstitutionGroup::ExactReagent(8'001u);
+    chain.createdAt = 200u;
+    chain.updatedAt = 200u;
+    source.coordinator.chains.push_back(chain);
+    EconomyChain releasedChain = chain;
+    releasedChain.publicId = "chn_0000000000000000";
+    releasedChain.active = false;
+    releasedChain.completedAt = 200u;
+    source.coordinator.chains.push_back(releasedChain);
     EconomyAssignment released = {
         .chainPublicId = "chn_0000000000000000",
         .characterGuid = 42u,
@@ -521,6 +551,60 @@ TEST(PlayerbotTelemetryTest, EconomyClaimTruncationKeepsActiveLeaseVisible)
     std::string const json = PlayerbotTelemetry::SerializeEconomy(source);
 
     EXPECT_NE(json.find(R"("chainPublicId":"chn_ffffffffffffffff")"), std::string::npos);
+    EXPECT_NE(json.find(R"("truncation":{"actors":0,"claims":1)"), std::string::npos);
+}
+
+TEST(PlayerbotTelemetryTest, EconomyProjectionOmitsEvidenceForPrunedChains)
+{
+    PlayerbotEconomyTelemetrySource source;
+    EconomyChain visibleChain;
+    visibleChain.publicId = "chn_0123456789abcdef";
+    visibleChain.marketId = 7u;
+    visibleChain.group = EconomySubstitutionGroup::ExactReagent(8'001u);
+    visibleChain.createdAt = 100u;
+    visibleChain.updatedAt = 101u;
+    source.coordinator.chains.push_back(visibleChain);
+    source.coordinator.claims.push_back({
+        .chainPublicId = "chn_ffffffffffffffff",
+        .characterGuid = 42u,
+        .marketId = 7u,
+        .group = EconomySubstitutionGroup::ExactReagent(8'001u),
+        .quantity = 1u,
+        .kind = EconomyClaimKind::Resource,
+        .state = EconomyClaimState::Released,
+        .createdAt = 100u,
+        .expiresAt = 101u,
+        .lastOutcome = EconomyAssignmentOutcome::NeedChanged,
+    });
+    source.recipes.push_back({
+        .chainPublicId = "chn_ffffffffffffffff",
+        .actorGuid = 42u,
+        .professionSkillId = 182u,
+        .recipeSpellId = 9'001u,
+        .outputItemId = 8'001u,
+        .outputQuantity = 1u,
+        .reagents = {{2'447u, 1u}},
+    });
+    source.trace = {
+        .generation = 1u,
+        .totalCount = 1u,
+        .events = {{
+            .publicId = "evt_ffffffffffffffff",
+            .chainPublicId = "chn_ffffffffffffffff",
+            .sequence = 1u,
+            .actorGuid = 42u,
+            .itemId = 8'001u,
+            .quantity = 1u,
+            .occurredAt = 101u,
+            .kind = EconomyTraceKind::Listed,
+        }},
+    };
+
+    std::string const json = PlayerbotTelemetry::SerializeEconomy(source);
+
+    EXPECT_EQ(json.find("chn_ffffffffffffffff"), std::string::npos);
+    EXPECT_EQ(json.find("evt_ffffffffffffffff"), std::string::npos);
+    EXPECT_NE(json.find(R"("trace":{"generation":1,"totalCount":1,"truncatedCount":1,"events":[])"), std::string::npos);
     EXPECT_NE(json.find(R"("truncation":{"actors":0,"claims":1)"), std::string::npos);
 }
 

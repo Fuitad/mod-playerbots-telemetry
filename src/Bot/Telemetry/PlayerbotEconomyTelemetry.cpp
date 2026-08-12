@@ -9,6 +9,7 @@
 #include <limits>
 #include <map>
 #include <numeric>
+#include <set>
 #include <sstream>
 #include <string_view>
 
@@ -610,6 +611,9 @@ std::string PlayerbotTelemetry::SerializeEconomy(PlayerbotEconomyTelemetrySource
     uint64 freeTradeskillCapital = 0u;
     uint64 accountBalances = 0u;
     std::size_t const actorCount = std::min(source.actors.size(), PLAYERBOT_ECONOMY_TELEMETRY_ACTOR_CAPACITY);
+    std::set<uint32> visibleActorGuids;
+    for (std::size_t index = 0; index < actorCount; ++index)
+        visibleActorGuids.insert(source.actors[index].characterGuid);
     out << ",\"actors\":[";
     for (std::size_t index = 0; index < actorCount; ++index)
     {
@@ -661,6 +665,10 @@ std::string PlayerbotTelemetry::SerializeEconomy(PlayerbotEconomyTelemetrySource
         out << '}';
     }
     out << ']';
+
+    std::set<std::string_view> visibleChainIds;
+    for (EconomyChain const& chain : source.coordinator.chains)
+        visibleChainIds.insert(chain.publicId);
 
     out << ",\"chains\":[";
     for (std::size_t chainIndex = 0; chainIndex < source.coordinator.chains.size(); ++chainIndex)
@@ -723,12 +731,20 @@ std::string PlayerbotTelemetry::SerializeEconomy(PlayerbotEconomyTelemetrySource
     }
     out << ']';
 
+    std::vector<PlayerbotEconomyRecipeTelemetry const*> visibleRecipes;
+    visibleRecipes.reserve(source.recipes.size());
+    for (PlayerbotEconomyRecipeTelemetry const& recipe : source.recipes)
+    {
+        if (visibleChainIds.contains(recipe.chainPublicId) && visibleActorGuids.contains(recipe.actorGuid))
+            visibleRecipes.push_back(&recipe);
+    }
+
     out << ",\"recipes\":[";
-    for (std::size_t recipeIndex = 0; recipeIndex < source.recipes.size(); ++recipeIndex)
+    for (std::size_t recipeIndex = 0; recipeIndex < visibleRecipes.size(); ++recipeIndex)
     {
         if (recipeIndex)
             out << ',';
-        PlayerbotEconomyRecipeTelemetry const& recipe = source.recipes[recipeIndex];
+        PlayerbotEconomyRecipeTelemetry const& recipe = *visibleRecipes[recipeIndex];
         out << "{\"chainPublicId\":";
         AppendJsonString(out, recipe.chainPublicId);
         out << ",\"actorMappingInputGuid\":" << recipe.actorGuid;
@@ -747,14 +763,40 @@ std::string PlayerbotTelemetry::SerializeEconomy(PlayerbotEconomyTelemetrySource
     }
     out << ']';
 
+    std::vector<EconomyTraceEvent const*> visibleTraceEvents;
+    visibleTraceEvents.reserve(source.trace.events.size());
+    for (EconomyTraceEvent const& event : source.trace.events)
+    {
+        if (event.chainPublicId.empty())
+        {
+            if (event.kind == EconomyTraceKind::Gathered)
+                visibleTraceEvents.push_back(&event);
+            continue;
+        }
+        if (!visibleChainIds.contains(event.chainPublicId))
+            continue;
+        if (event.kind == EconomyTraceKind::Crafted &&
+            std::none_of(visibleRecipes.begin(), visibleRecipes.end(),
+                         [&event](auto const* recipe)
+                         {
+                             return recipe->chainPublicId == event.chainPublicId &&
+                                    recipe->actorGuid == event.actorGuid &&
+                                    recipe->recipeSpellId == event.recipeSpellId;
+                         }))
+        {
+            continue;
+        }
+        visibleTraceEvents.push_back(&event);
+    }
+    uint64 const traceTotalCount = std::max<uint64>(source.trace.totalCount, source.trace.events.size());
     out << ",\"trace\":{\"generation\":" << source.trace.generation;
-    out << ",\"totalCount\":" << source.trace.totalCount;
-    out << ",\"truncatedCount\":" << source.trace.truncatedCount << ",\"events\":[";
-    for (std::size_t eventIndex = 0; eventIndex < source.trace.events.size(); ++eventIndex)
+    out << ",\"totalCount\":" << traceTotalCount;
+    out << ",\"truncatedCount\":" << (traceTotalCount - visibleTraceEvents.size()) << ",\"events\":[";
+    for (std::size_t eventIndex = 0; eventIndex < visibleTraceEvents.size(); ++eventIndex)
     {
         if (eventIndex)
             out << ',';
-        EconomyTraceEvent const& event = source.trace.events[eventIndex];
+        EconomyTraceEvent const& event = *visibleTraceEvents[eventIndex];
         out << "{\"publicId\":";
         AppendJsonString(out, event.publicId);
         out << ",\"chainPublicId\":";
@@ -802,7 +844,7 @@ std::string PlayerbotTelemetry::SerializeEconomy(PlayerbotEconomyTelemetrySource
     {
         for (EconomyAssignment const& claim : source.coordinator.claims)
         {
-            if ((claim.state == EconomyClaimState::Leased) == active)
+            if ((claim.state == EconomyClaimState::Leased) == active && visibleChainIds.contains(claim.chainPublicId))
             {
                 visibleClaims.push_back(&claim);
                 if (visibleClaims.size() == PLAYERBOT_ECONOMY_TELEMETRY_CLAIM_CAPACITY)
@@ -999,7 +1041,9 @@ std::string PlayerbotTelemetry::SerializeEconomy(PlayerbotEconomyTelemetrySource
         if (!firstFailure)
             out << ',';
         out << "{\"actorMappingInputGuid\":" << actor.characterGuid << ",\"chainPublicId\":";
-        AppendJsonString(out, actor.observation.chainPublicId);
+        AppendJsonString(out, visibleChainIds.contains(actor.observation.chainPublicId)
+                                  ? actor.observation.chainPublicId
+                                  : std::string_view{});
         out << ",\"blockerCode\":";
         AppendJsonString(out, actor.observation.blockerCode);
         out << ",\"consecutiveFailures\":" << static_cast<uint32>(actor.observation.consecutiveFailures);
