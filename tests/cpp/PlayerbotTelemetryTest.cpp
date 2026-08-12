@@ -486,6 +486,44 @@ TEST(PlayerbotTelemetryTest, EconomyCapitalAndTruncationAccountForOmittedPositio
     EXPECT_NE(json.find(R"("positions":1)"), std::string::npos);
 }
 
+TEST(PlayerbotTelemetryTest, EconomyClaimTruncationKeepsActiveLeaseVisible)
+{
+    PlayerbotEconomyTelemetrySource source;
+    EconomyAssignment released = {
+        .chainPublicId = "chn_0000000000000000",
+        .characterGuid = 42u,
+        .marketId = 7u,
+        .group = EconomySubstitutionGroup::ExactReagent(2447u),
+        .quantity = 1u,
+        .kind = EconomyClaimKind::Resource,
+        .state = EconomyClaimState::Released,
+        .createdAt = 100u,
+        .expiresAt = 101u,
+        .lastOutcome = EconomyAssignmentOutcome::NeedChanged,
+    };
+    source.coordinator.claims.assign(PLAYERBOT_ECONOMY_TELEMETRY_CLAIM_CAPACITY, released);
+    source.coordinator.claims.push_back({
+        .chainPublicId = "chn_ffffffffffffffff",
+        .characterGuid = 43u,
+        .marketId = 7u,
+        .group = EconomySubstitutionGroup::ExactReagent(8001u),
+        .quantity = 1u,
+        .kind = EconomyClaimKind::Production,
+        .priority = EconomyClaimPriority::Producer,
+        .state = EconomyClaimState::Leased,
+        .createdAt = 200u,
+        .expiresAt = 260u,
+        .recipeSpellId = 9001u,
+        .outputItemId = 8001u,
+        .lastOutcome = EconomyAssignmentOutcome::Committed,
+    });
+
+    std::string const json = PlayerbotTelemetry::SerializeEconomy(source);
+
+    EXPECT_NE(json.find(R"("chainPublicId":"chn_ffffffffffffffff")"), std::string::npos);
+    EXPECT_NE(json.find(R"("truncation":{"actors":0,"claims":1)"), std::string::npos);
+}
+
 TEST(PlayerbotTelemetryTest, SnapshotReplacesOversizedEconomyWithExplicitUnavailableState)
 {
     std::string const oversizedEconomy = R"({"available":true,"chains":[")" + std::string(4'096u, 'x') + R"("]})";

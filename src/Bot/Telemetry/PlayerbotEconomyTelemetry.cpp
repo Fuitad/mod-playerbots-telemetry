@@ -796,14 +796,29 @@ std::string PlayerbotTelemetry::SerializeEconomy(PlayerbotEconomyTelemetrySource
     }
     out << "]}";
 
-    std::size_t const claimCount =
-        std::min(source.coordinator.claims.size(), PLAYERBOT_ECONOMY_TELEMETRY_CLAIM_CAPACITY);
+    std::vector<EconomyAssignment const*> visibleClaims;
+    visibleClaims.reserve(std::min(source.coordinator.claims.size(), PLAYERBOT_ECONOMY_TELEMETRY_CLAIM_CAPACITY));
+    for (bool const active : {true, false})
+    {
+        for (EconomyAssignment const& claim : source.coordinator.claims)
+        {
+            if ((claim.state == EconomyClaimState::Leased) == active)
+            {
+                visibleClaims.push_back(&claim);
+                if (visibleClaims.size() == PLAYERBOT_ECONOMY_TELEMETRY_CLAIM_CAPACITY)
+                    break;
+            }
+        }
+        if (visibleClaims.size() == PLAYERBOT_ECONOMY_TELEMETRY_CLAIM_CAPACITY)
+            break;
+    }
+    std::size_t const claimCount = visibleClaims.size();
     out << ",\"claims\":[";
     for (std::size_t index = 0; index < claimCount; ++index)
     {
         if (index)
             out << ',';
-        EconomyAssignment const& claim = source.coordinator.claims[index];
+        EconomyAssignment const& claim = *visibleClaims[index];
         out << "{\"chainPublicId\":";
         AppendJsonString(out, claim.chainPublicId);
         out << ",\"actorMappingInputGuid\":" << claim.characterGuid << ",\"marketId\":" << claim.marketId;
