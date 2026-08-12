@@ -207,12 +207,14 @@ TEST(PlayerbotTelemetryTest, EconomySerializesBoundedChainsActorsCapitalAndOutco
         .marketId = 7u,
         .group = EconomySubstitutionGroup::ExactReagent(2447u),
         .quantity = 2u,
-        .kind = EconomyClaimKind::Resource,
+        .kind = EconomyClaimKind::Production,
         .priority = EconomyClaimPriority::Producer,
         .state = EconomyClaimState::Leased,
-        .workIdentity = "gather:2447",
+        .workIdentity = "craft:9002:8002",
         .createdAt = 1'000u,
         .expiresAt = 1'060u,
+        .recipeSpellId = 9'002u,
+        .outputItemId = 8'002u,
         .lastOutcome = EconomyAssignmentOutcome::Committed,
     });
     source.coordinator.blockers.push_back({EconomyWorkBlocker::MissingPath, 2u});
@@ -369,6 +371,9 @@ TEST(PlayerbotTelemetryTest, EconomySerializesBoundedChainsActorsCapitalAndOutco
     EXPECT_NE(json.find(R"("publicId":"chn_fedcba9876543210")"), std::string::npos);
     EXPECT_NE(json.find(R"("stage":"complete","outcome":"completed")"), std::string::npos);
     EXPECT_NE(json.find(R"("chainPublicId":"chn_0123456789abcdef","actorMappingInputGuid":42,"marketId":7)"),
+              std::string::npos);
+    EXPECT_NE(json.find(R"("quantity":2,"committedQuantity":0,"recipeSpellId":9002,"outputItemId":8002,)"
+                        R"("kind":"production")"),
               std::string::npos);
     EXPECT_NE(json.find(R"("unitPriceCopper":125,"quantity":6)"), std::string::npos);
     EXPECT_NE(json.find(R"("publicId":"0123456789abcdefabcd","actorMappingInputGuid":42)"), std::string::npos);

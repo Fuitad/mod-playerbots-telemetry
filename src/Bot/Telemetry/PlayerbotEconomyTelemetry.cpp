@@ -810,6 +810,7 @@ std::string PlayerbotTelemetry::SerializeEconomy(PlayerbotEconomyTelemetrySource
         out << ",\"group\":";
         AppendSubstitutionGroup(out, claim.group);
         out << ",\"quantity\":" << claim.quantity << ",\"committedQuantity\":" << claim.committedQuantity;
+        out << ",\"recipeSpellId\":" << claim.recipeSpellId << ",\"outputItemId\":" << claim.outputItemId;
         out << ",\"kind\":";
         AppendJsonString(out, ClaimKindName(claim.kind));
         out << ",\"priority\":";
