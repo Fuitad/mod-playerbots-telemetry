@@ -15,7 +15,7 @@ interfaces and never grants gameplay authority to a telemetry caller.
 
 * A Playerbot compatible AzerothCore checkout
 * The public mod-playerbots fork with the generic extension registry
-* mod-playerbot-personality
+* mod-playerbots-personality
 * mod-playerbots-economy
 
 ## Configuration
