@@ -23,6 +23,7 @@
 #include "DBCStructure.h"
 #include "Group.h"
 #include "Item.h"
+#include "LastMovementValue.h"
 #include "Player.h"
 #include "PlayerbotAI.h"
 #include "PlayerbotCareerPlan.h"
@@ -41,6 +42,44 @@ constexpr std::size_t VERIFICATION_INVENTORY_CAPACITY = 128;
 constexpr std::size_t VERIFICATION_SKILLS_CAPACITY = 128;
 constexpr std::size_t VERIFICATION_PROFESSIONS_CAPACITY = 16;
 constexpr std::size_t VERIFICATION_KNOWN_RECIPE_CAPACITY = 1024;
+
+std::string_view TravelPathTypeName(TravelNodePathType pathType)
+{
+    switch (pathType)
+    {
+        case TravelNodePathType::walk:
+            return "walk";
+        case TravelNodePathType::portal:
+            return "portal";
+        case TravelNodePathType::transport:
+            return "transport";
+        case TravelNodePathType::flightPath:
+            return "flight_path";
+        case TravelNodePathType::teleportSpell:
+            return "teleport_spell";
+        case TravelNodePathType::none:
+        default:
+            return "none";
+    }
+}
+
+std::string_view MovementPriorityName(MovementPriority priority)
+{
+    switch (priority)
+    {
+        case MovementPriority::MOVEMENT_IDLE:
+            return "idle";
+        case MovementPriority::MOVEMENT_WANDER:
+            return "wander";
+        case MovementPriority::MOVEMENT_COMBAT:
+            return "combat";
+        case MovementPriority::MOVEMENT_FORCED:
+            return "forced";
+        case MovementPriority::MOVEMENT_NORMAL:
+        default:
+            return "normal";
+    }
+}
 
 void AppendJsonString(std::ostringstream& out, std::string_view value)
 {
@@ -159,6 +198,72 @@ PlayerbotInspectionTravel InspectTravel(Player* bot, PlayerbotAI* botAI)
 
     if (target->getStatus() != TRAVEL_STATUS_NONE && target->getStatus() != TRAVEL_STATUS_EXPIRED)
         travel.timeLeftMs = target->getTimeLeft();
+
+    return travel;
+}
+
+PlayerbotVerificationTravelPoint VerificationTravelPoint(WorldPosition point, WorldPosition botPosition)
+{
+    if (!point)
+        return {};
+
+    return {
+        .available = true,
+        .mapId = point.GetMapId(),
+        .x = point.GetPositionX(),
+        .y = point.GetPositionY(),
+        .z = point.GetPositionZ(),
+        .distanceYards = point.distance(botPosition),
+    };
+}
+
+PlayerbotVerificationTravel InspectVerificationTravel(Player* bot, PlayerbotAI* botAI)
+{
+    TravelTarget* target = botAI->GetAiObjectContext()->GetValue<TravelTarget*>("travel target")->Get();
+    if (!target)
+        return {};
+
+    TravelDestination* destination = target->getDestination();
+    if (!destination || dynamic_cast<NullTravelDestination*>(destination))
+        return {};
+
+    WorldPosition botPosition(bot);
+    WorldPosition* targetPosition = target->getPosition();
+    if (!targetPosition)
+        return {};
+    LastMovement& movement = botAI->GetAiObjectContext()->GetValue<LastMovement&>("last movement")->Get();
+    TravelPath route = movement.lastPath;
+
+    PlayerbotVerificationTravel travel = {
+        .available = true,
+        .status = std::string(TravelStatusName(target->getStatus())),
+        .destinationType = destination->getName(),
+        .destinationTitle = destination->getTitle(),
+        .distanceYards = targetPosition->distance(botPosition),
+        .forced = target->isForced(),
+        .canMove = botAI->CanMove(),
+        .route = {.pointCount = static_cast<uint32>(route.getPath().size())},
+        .lastMovement =
+            {
+                .point = VerificationTravelPoint(movement.lastMoveShort, botPosition),
+                .ageMs = movement.msTime ? getMSTimeDiff(movement.msTime, getMSTime()) : 0,
+                .delayMs = static_cast<uint32>(std::max(0.0f, movement.lastdelayTime)),
+                .priority = std::string(MovementPriorityName(movement.priority)),
+            },
+    };
+
+    if (!route.empty())
+    {
+        TravelNodePathType pathType = TravelNodePathType::none;
+        uint32 entry = 0;
+        Transport* transport = bot->GetTransport();
+        uint32 const transportEntry = transport ? transport->GetEntry() : 0;
+        WorldPosition const nextPoint =
+            route.getNextPoint(botPosition, sPlayerbotAIConfig.reactDistance, pathType, entry, transportEntry);
+        travel.route.nextPathType = TravelPathTypeName(pathType);
+        travel.route.nextEntry = entry;
+        travel.route.nextPoint = VerificationTravelPoint(nextPoint, botPosition);
+    }
 
     return travel;
 }
@@ -676,6 +781,47 @@ void AppendVerificationGroup(std::ostringstream& out, PlayerbotVerificationGroup
     AppendVerificationCompleteness(out, group.completeness);
     out << '}';
 }
+
+void AppendVerificationTravelPoint(std::ostringstream& out, PlayerbotVerificationTravelPoint const& point)
+{
+    out << "{\"available\":" << (point.available ? "true" : "false");
+    out << ",\"mapId\":" << point.mapId;
+    out << std::fixed << std::setprecision(3);
+    out << ",\"x\":" << point.x;
+    out << ",\"y\":" << point.y;
+    out << ",\"z\":" << point.z;
+    out << ",\"distanceYards\":" << point.distanceYards;
+    out << std::defaultfloat << '}';
+}
+
+void AppendVerificationTravel(std::ostringstream& out, PlayerbotVerificationTravel const& travel)
+{
+    out << "{\"available\":" << (travel.available ? "true" : "false");
+    out << ",\"status\":";
+    AppendJsonString(out, travel.status);
+    out << ",\"destination\":{\"type\":";
+    AppendJsonString(out, travel.destinationType);
+    out << ",\"title\":";
+    AppendJsonString(out, travel.destinationTitle);
+    out << std::fixed << std::setprecision(3);
+    out << ",\"distanceYards\":" << travel.distanceYards;
+    out << std::defaultfloat << '}';
+    out << ",\"forced\":" << (travel.forced ? "true" : "false");
+    out << ",\"canMove\":" << (travel.canMove ? "true" : "false");
+    out << ",\"route\":{\"pointCount\":" << travel.route.pointCount;
+    out << ",\"nextPathType\":";
+    AppendJsonString(out, travel.route.nextPathType);
+    out << ",\"nextEntry\":" << travel.route.nextEntry;
+    out << ",\"nextPoint\":";
+    AppendVerificationTravelPoint(out, travel.route.nextPoint);
+    out << "},\"lastMovement\":{\"point\":";
+    AppendVerificationTravelPoint(out, travel.lastMovement.point);
+    out << ",\"ageMs\":" << travel.lastMovement.ageMs;
+    out << ",\"delayMs\":" << travel.lastMovement.delayMs;
+    out << ",\"priority\":";
+    AppendJsonString(out, travel.lastMovement.priority);
+    out << "}}";
+}
 }  // namespace
 
 std::string PlayerbotInspector::Inspect(Player* bot, PlayerbotAI* botAI)
@@ -807,6 +953,9 @@ std::string PlayerbotInspector::SerializeVerification(PlayerbotVerificationInspe
     AppendJsonString(out, inspection.transport.guid);
     out << ",\"entry\":" << inspection.transport.entry << '}';
 
+    out << ",\"travel\":";
+    AppendVerificationTravel(out, inspection.travel);
+
     out << ",\"action\":{\"lastExecutedAction\":";
     AppendJsonString(out, inspection.lastExecutedAction);
     out << ",\"latestAttempt\":";
@@ -923,6 +1072,7 @@ PlayerbotVerificationInspection PlayerbotInspector::BuildVerification(Player* bo
                 .moving = bot->isMoving(),
                 .movementState = bot->IsBeingTeleported() ? "teleporting" : (bot->isMoving() ? "moving" : "stationary"),
             },
+        .travel = InspectVerificationTravel(bot, botAI),
         .lastExecutedAction = std::move(lastExecutedAction),
         .actionHistory = published.actionHistory,
         .moneyCopper = bot->GetMoney(),
@@ -1011,5 +1161,5 @@ std::string PlayerbotInspector::BotNotFound()
 
 std::string PlayerbotInspector::VerificationBotNotFound()
 {
-    return R"({"schemaVersion":2,"ok":false,"error":{"code":"bot_not_found","message":"Bot is not available."}})";
+    return R"({"schemaVersion":3,"ok":false,"error":{"code":"bot_not_found","message":"Bot is not available."}})";
 }

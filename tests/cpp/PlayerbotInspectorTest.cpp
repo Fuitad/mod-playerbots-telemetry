@@ -20,9 +20,11 @@
 #include "Bot/Telemetry/PlayerbotTelemetryState.h"
 #include "Bot/Telemetry/PlayerbotVerificationState.h"
 #include "IntegrationTestFixture.h"
+#include "LastMovementValue.h"
 #include "ObjectAccessor.h"
 #include "PlayerbotAIConfig.h"
 #include "Transport.h"
+#include "TravelMgr.h"
 #include "gtest/gtest.h"
 
 namespace
@@ -404,10 +406,11 @@ TEST(PlayerbotInspectorTest, VerificationSerializationIncludesTypedCompleteness)
     std::string const attemptHistory = R"("attempts":[{"sequence":1,"timestampMs":100,"ageMs":60,"success":false,)"
                                        R"("actionName":"follow","nameTruncated":false}])";
 
-    EXPECT_NE(json.find(R"("schemaVersion":2)"), std::string::npos);
+    EXPECT_NE(json.find(R"("schemaVersion":3)"), std::string::npos);
     EXPECT_NE(json.find(R"("master":{"available":true,"guid":"Player-1-3","name":"Pierre","relationshipValid":true})"),
               std::string::npos);
     EXPECT_NE(json.find(R"("attached":true,"guid":"Transport-1","entry":176244)"), std::string::npos);
+    EXPECT_NE(json.find(R"("travel":{"available":false)"), std::string::npos);
     EXPECT_NE(json.find(latestAttempt), std::string::npos);
     EXPECT_NE(json.find(attemptHistory), std::string::npos);
     EXPECT_NE(json.find(R"("totalCount":1,"returnedCount":1,"truncated":false)"), std::string::npos);
@@ -515,6 +518,38 @@ TEST_F(PlayerbotInspectorIntegrationTest, VerificationInspectionUsesCurrentTrans
     bot->SetTransport(nullptr);
     std::string const detachedJson = PlayerbotInspector::InspectVerification(bot, botAI);
     EXPECT_NE(detachedJson.find(R"("transport":{"attached":false,"guid":"","entry":0})"), std::string::npos);
+}
+
+TEST_F(PlayerbotInspectorIntegrationTest, VerificationInspectionIncludesOrdinaryTravelRouteState)
+{
+    TestPlayer* bot = CreateTestPlayer(100, "InspectorBot");
+    bot->Relocate(0.0f, 0.0f, 0.0f, 0.0f);
+    PlayerbotAI* botAI = AddBot(bot);
+    ASSERT_NE(botAI, nullptr);
+
+    TravelDestination destinationType(0.0f, 1.0f);
+    WorldPosition destination(bot->GetMapId(), 100.0f, 0.0f, 0.0f);
+    TravelTarget* target = botAI->GetAiObjectContext()->GetValue<TravelTarget*>("travel target")->Get();
+    target->setTarget(&destinationType, &destination);
+    target->setForced(true);
+
+    LastMovement& movement = botAI->GetAiObjectContext()->GetValue<LastMovement&>("last movement")->Get();
+    movement.lastPath.addPoint(WorldPosition(bot->GetMapId(), 40.0f, 0.0f, 0.0f), NODE_PATH);
+    movement.lastPath.addPoint(destination, NODE_PATH);
+    movement.Set(bot->GetMapId(), 10.0f, 0.0f, 0.0f, 0.0f, 5000.0f, MovementPriority::MOVEMENT_FORCED);
+
+    PlayerbotVerificationTravel const travel = PlayerbotInspector::BuildVerification(bot, botAI).travel;
+
+    EXPECT_TRUE(travel.available);
+    EXPECT_TRUE(travel.forced);
+    EXPECT_TRUE(travel.canMove);
+    EXPECT_EQ(travel.route.pointCount, 2U);
+    EXPECT_TRUE(travel.route.nextPoint.available);
+    EXPECT_FLOAT_EQ(travel.route.nextPoint.x, 40.0f);
+    EXPECT_EQ(travel.lastMovement.priority, "forced");
+    EXPECT_FLOAT_EQ(travel.lastMovement.point.x, 10.0f);
+
+    target->releaseVisitors();
 }
 
 TEST_F(PlayerbotInspectorIntegrationTest, VerificationInspectionIncludesLatestAttemptAndAgeAtSnapshot)

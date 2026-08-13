@@ -15,7 +15,7 @@
 #include "Define.h"
 
 inline constexpr uint32 PLAYERBOT_INSPECTION_SCHEMA_VERSION = 1;
-inline constexpr uint32 PLAYERBOT_VERIFICATION_INSPECTION_SCHEMA_VERSION = 2;
+inline constexpr uint32 PLAYERBOT_VERIFICATION_INSPECTION_SCHEMA_VERSION = 3;
 
 class Player;
 class PlayerbotAI;
@@ -125,6 +125,45 @@ struct PlayerbotVerificationTransport
     uint32 entry = 0;
 };
 
+struct PlayerbotVerificationTravelPoint
+{
+    bool available = false;
+    uint32 mapId = 0;
+    float x = 0.0f;
+    float y = 0.0f;
+    float z = 0.0f;
+    float distanceYards = 0.0f;
+};
+
+struct PlayerbotVerificationTravelRoute
+{
+    uint32 pointCount = 0;
+    std::string nextPathType = "none";
+    uint32 nextEntry = 0;
+    PlayerbotVerificationTravelPoint nextPoint;
+};
+
+struct PlayerbotVerificationLastMovement
+{
+    PlayerbotVerificationTravelPoint point;
+    uint32 ageMs = 0;
+    uint32 delayMs = 0;
+    std::string priority = "normal";
+};
+
+struct PlayerbotVerificationTravel
+{
+    bool available = false;
+    std::string status = "unavailable";
+    std::string destinationType;
+    std::string destinationTitle;
+    float distanceYards = 0.0f;
+    bool forced = false;
+    bool canMove = false;
+    PlayerbotVerificationTravelRoute route;
+    PlayerbotVerificationLastMovement lastMovement;
+};
+
 struct PlayerbotVerificationInspection
 {
     std::string guid;
@@ -136,6 +175,7 @@ struct PlayerbotVerificationInspection
     PlayerbotVerificationGroup group;
     PlayerbotVerificationPosition position;
     PlayerbotVerificationTransport transport;
+    PlayerbotVerificationTravel travel;
     std::string lastExecutedAction;
     PlayerbotVerificationActionHistory actionHistory;
     uint64 snapshotTimestampMs = 0;
