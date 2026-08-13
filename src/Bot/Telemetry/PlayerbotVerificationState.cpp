@@ -36,7 +36,8 @@ PlayerbotVerificationActionHistory PlayerbotVerificationState::CopyActionHistory
 void PlayerbotVerificationState::PublishCareerPending()
 {
     std::lock_guard<std::mutex> lock(mutex);
-    career = {.status = PlayerbotVerificationCareerStatus::Pending};
+    career = PlayerbotVerificationCareerPublication{};
+    career.status = PlayerbotVerificationCareerStatus::Pending;
 }
 
 void PlayerbotVerificationState::PublishCareer(PlayerbotVerificationCareerPublication publication)
@@ -50,14 +51,14 @@ void PlayerbotVerificationState::PublishEconomy(PlayerbotVerificationEconomyOutc
                                                 uint8 consecutiveFailures, uint64 nextEligibleTime)
 {
     std::lock_guard<std::mutex> lock(mutex);
-    economy = {
-        .sequence = economy.sequence + 1,
-        .outcome = outcome,
-        .phase = phase,
-        .workOrderSpellId = workOrderSpellId,
-        .consecutiveFailures = consecutiveFailures,
-        .nextEligibleTime = nextEligibleTime,
-    };
+    uint64 const updatedEconomySequence = economy.sequence + 1;
+    economy = PlayerbotVerificationEconomyObservation{};
+    economy.sequence = updatedEconomySequence;
+    economy.outcome = outcome;
+    economy.phase = phase;
+    economy.workOrderSpellId = workOrderSpellId;
+    economy.consecutiveFailures = consecutiveFailures;
+    economy.nextEligibleTime = nextEligibleTime;
 }
 
 void PlayerbotVerificationState::PublishEconomy(PlayerbotVerificationEconomyObservation publication)
