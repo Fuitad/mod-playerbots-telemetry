@@ -26,10 +26,17 @@ namespace
 class PlayerbotsTelemetryExtension final : public PlayerbotExtension
 {
 public:
-    void OnWorldUpdate(std::uint32_t diff) override { PlayerbotTelemetry::instance().Update(diff); }
+    void OnWorldUpdate(std::uint32_t diff) override
+    {
+        if (sPlayerbotTelemetryConfig.enable)
+            PlayerbotTelemetry::instance().Update(diff);
+    }
 
     void OnBotUpdate(PlayerbotAI* botAI, PlayerbotAIUpdate const& update) override
     {
+        if (!sPlayerbotTelemetryConfig.enable)
+            return;
+
         Player* const bot = botAI ? botAI->GetBot() : nullptr;
         if (!bot)
             return;
@@ -46,6 +53,9 @@ public:
 
     void OnActionExecuted(PlayerbotAI* botAI, std::string_view name, bool success, std::uint64_t timestampMs) override
     {
+        if (!sPlayerbotTelemetryConfig.enable)
+            return;
+
         Player* const bot = botAI ? botAI->GetBot() : nullptr;
         if (!bot)
             return;
@@ -69,6 +79,9 @@ public:
 
     bool HandleRemoteCommand(std::string_view command, std::string& response) override
     {
+        if (!sPlayerbotTelemetryConfig.enable)
+            return false;
+
         if (command == "telemetry,0")
         {
             response = PlayerbotTelemetry::instance().Snapshot();

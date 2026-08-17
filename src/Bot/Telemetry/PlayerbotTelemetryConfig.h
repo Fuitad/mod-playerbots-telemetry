@@ -15,6 +15,7 @@
 
 struct PlayerbotTelemetrySettings
 {
+    bool enable = true;
     std::uint32_t maxPayloadBytes = 2'097'152;
 };
 
@@ -22,6 +23,14 @@ template <class Lookup>
 PlayerbotTelemetrySettings LoadPlayerbotTelemetrySettings(Lookup&& lookup)
 {
     PlayerbotTelemetrySettings settings;
+    if (std::optional<std::string> const enable = lookup("PlayerbotsTelemetry.Enable"); enable && !enable->empty())
+    {
+        std::uint32_t parsed = 0;
+        auto const result = std::from_chars(enable->data(), enable->data() + enable->size(), parsed);
+        if (result.ec == std::errc() && result.ptr == enable->data() + enable->size())
+            settings.enable = parsed != 0;
+    }
+
     std::optional<std::string> const value = lookup("PlayerbotsTelemetry.MaxPayloadBytes");
     if (!value || value->empty())
         return settings;

@@ -26,6 +26,18 @@ int main()
         LoadPlayerbotTelemetrySettings([](std::string_view) -> std::optional<std::string> { return std::nullopt; });
     Require(defaultSettings.maxPayloadBytes == 2'097'152,
             "default maximum payload cannot carry the current economy snapshot");
+    Require(defaultSettings.enable, "telemetry must stay enabled when PlayerbotsTelemetry.Enable is absent");
+
+    std::unordered_map<std::string, std::string> const disabledValues = {
+        {"PlayerbotsTelemetry.Enable", "0"},
+    };
+    PlayerbotTelemetrySettings const disabled = LoadPlayerbotTelemetrySettings(
+        [&disabledValues](std::string_view key) -> std::optional<std::string>
+        {
+            auto const found = disabledValues.find(std::string(key));
+            return found == disabledValues.end() ? std::nullopt : std::optional<std::string>(found->second);
+        });
+    Require(!disabled.enable, "PlayerbotsTelemetry.Enable = 0 did not disable the module");
 
     std::unordered_map<std::string, std::string> const values = {
         {"PlayerbotsTelemetry.MaxPayloadBytes", "4096"},
