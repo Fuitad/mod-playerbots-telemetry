@@ -1089,7 +1089,7 @@ PlayerbotVerificationInspection PlayerbotInspector::BuildVerification(Player* bo
             .available = true,
             .guid = master->GetGUID().ToString(),
             .name = master->GetName(),
-            .relationshipValid = botAI->HasRealPlayerMaster(),
+            .relationshipValid = botAI->HasGameClientMaster(),
         };
     }
 
