@@ -231,6 +231,14 @@ std::vector<uint16> const& PrimaryProfessionSkillIds()
     return skills;
 }
 
+std::vector<uint16> const& SecondaryProfessionSkillIds()
+{
+    // Cooking, First Aid, and Fishing. A bot is granted these outright, so they are learned without
+    // ever being planned.
+    static std::vector<uint16> const skills = {SKILL_FIRST_AID, SKILL_COOKING, SKILL_FISHING};
+    return skills;
+}
+
 std::vector<PlayerbotEconomyActorTelemetry::Profession> BuildProfessions(
     Player const* bot, PlayerbotVerificationCareerPublication const& career)
 {
@@ -240,7 +248,13 @@ std::vector<PlayerbotEconomyActorTelemetry::Profession> BuildProfessions(
     for (uint16 skillId : career.secondarySkills)
         AddProfession(professions, bot, skillId, true);
 
+    // Report what the bot actually has, not only what its career planned. Work orders are chosen from
+    // the professions it really holds, so omitting a learned one makes the payload self-contradictory.
     for (uint16 skillId : PrimaryProfessionSkillIds())
+        if (bot->HasSkill(skillId))
+            AddProfession(professions, bot, skillId, false);
+
+    for (uint16 skillId : SecondaryProfessionSkillIds())
         if (bot->HasSkill(skillId))
             AddProfession(professions, bot, skillId, false);
 
