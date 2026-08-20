@@ -28,6 +28,12 @@ void PlayerbotTelemetryStateStore::Erase(std::uint32_t botGuid)
     states.erase(botGuid);
 }
 
+void PlayerbotTelemetryStateStore::Clear()
+{
+    std::scoped_lock lock(mutex);
+    states.clear();
+}
+
 std::size_t PlayerbotTelemetryStateStore::Size() const
 {
     std::scoped_lock lock(mutex);

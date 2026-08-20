@@ -38,6 +38,12 @@ public:
     [[nodiscard]] std::shared_ptr<PlayerbotTelemetryBotState> Get(std::uint32_t botGuid);
     [[nodiscard]] std::shared_ptr<PlayerbotTelemetryBotState> Find(std::uint32_t botGuid) const;
     void Erase(std::uint32_t botGuid);
+
+    // Drops every bot's state at once. Erase is the per-bot form used when a single bot goes away;
+    // this is for the callers that discard the whole population, such as the test isolation
+    // listener that gives each test an empty store.
+    void Clear();
+
     [[nodiscard]] std::size_t Size() const;
 
 private:
