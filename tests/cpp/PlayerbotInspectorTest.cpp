@@ -475,6 +475,12 @@ protected:
         for (TestPlayer* bot : registeredBots)
         {
             sPlayerbotsMgr.RemovePlayerBotData(bot->GetGUID(), true);
+
+            // What production does when a bot goes away (PlayerbotsTelemetryScripts.cpp:71). The
+            // store is global and keyed by guid, so without this a test's action history outlives
+            // it and becomes the next test's starting baseline.
+            GetPlayerbotTelemetryStateStore().Erase(bot->GetGUID().GetCounter());
+
             ObjectAccessor::RemoveObject(static_cast<Player*>(bot));
         }
 
@@ -484,6 +490,11 @@ protected:
 
     PlayerbotAI* AddBot(TestPlayer* bot)
     {
+        // Cleaning up on the way out is not enough on its own: any suite sharing these guids could
+        // leave state behind. Claiming the guid clears it, so a test's baseline is its own no
+        // matter what ran before it or in which order the runner chose to run it.
+        GetPlayerbotTelemetryStateStore().Erase(bot->GetGUID().GetCounter());
+
         ObjectAccessor::AddObject(static_cast<Player*>(bot));
         sPlayerbotsMgr.AddPlayerbotData(bot, true);
         registeredBots.push_back(bot);
@@ -550,6 +561,30 @@ TEST_F(PlayerbotInspectorIntegrationTest, VerificationInspectionIncludesOrdinary
     EXPECT_FLOAT_EQ(travel.lastMovement.point.x, 10.0f);
 
     target->releaseVisitors();
+}
+
+/*
+ * The isolation guard itself, asserted rather than left to the runner's ordering.
+ *
+ * VerificationInspectionIncludesLatestAttemptAndAgeAtSnapshot below reads an absolute counter
+ * ("sequence":1), which only holds if the guid it claims carries no state from an earlier test.
+ * This one dirties the global store deliberately and then claims the guid, so deleting the erase in
+ * AddBot fails here immediately and in any order, instead of surfacing later as an unrelated test
+ * failing under a repeat or a shuffle. The matching erase in TearDown cannot be asserted from
+ * inside a test, since no test observes another's teardown; this covers the half that is
+ * observable.
+ */
+TEST_F(PlayerbotInspectorIntegrationTest, AClaimedGuidCarriesNoVerificationStateFromAnEarlierTest)
+{
+    constexpr ObjectGuid::LowType REUSED_GUID = 100;
+
+    GetPlayerbotTelemetryStateStore().Get(REUSED_GUID)->verification.RecordActionAttempt("follow", true, 10);
+    ASSERT_EQ(GetPlayerbotTelemetryStateStore().Get(REUSED_GUID)->verification.CopyActionHistory().totalCount, 1U);
+
+    TestPlayer* bot = CreateTestPlayer(REUSED_GUID, "InspectorBot");
+    ASSERT_NE(AddBot(bot), nullptr);
+
+    EXPECT_EQ(GetPlayerbotTelemetryStateStore().Get(REUSED_GUID)->verification.CopyActionHistory().totalCount, 0U);
 }
 
 TEST_F(PlayerbotInspectorIntegrationTest, VerificationInspectionIncludesLatestAttemptAndAgeAtSnapshot)
