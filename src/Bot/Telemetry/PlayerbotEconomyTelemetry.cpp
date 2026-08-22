@@ -235,6 +235,8 @@ std::string_view GatheringProfessionName(GatheringProfession value)
             return "mining";
         case GatheringProfession::Skinning:
             return "skinning";
+        case GatheringProfession::Hunting:
+            return "hunting";
     }
     return "herbalism";
 }
