@@ -492,6 +492,12 @@ void AppendSubstitutionGroup(std::ostringstream& out, EconomySubstitutionGroup c
         case EconomySubstitutionKind::Enhancement:
             kind = "enhancement";
             break;
+        case EconomySubstitutionKind::Glyph:
+            kind = "glyph";
+            break;
+        case EconomySubstitutionKind::Gem:
+            kind = "gem";
+            break;
     }
     out << "{\"kind\":";
     AppendJsonString(out, kind);

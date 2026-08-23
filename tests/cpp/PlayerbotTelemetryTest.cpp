@@ -400,6 +400,31 @@ TEST(PlayerbotTelemetryTest, EconomySerializesBoundedChainsActorsCapitalAndOutco
     EXPECT_EQ(json.find("4294967290"), std::string::npos);
 }
 
+TEST(PlayerbotTelemetryTest, EconomyNamesGlyphAndGemChainGroupsInsteadOfFallingBackToExactReagent)
+{
+    // Live 2026-08-23: glyph and gem chains serialized as exact_reagent with exactItemId 0, and the
+    // Medivh validator rejected the whole economy payload (command_payload_invalid).
+    PlayerbotEconomyTelemetrySource source;
+    source.observedAt = 1'030u;
+    source.serializedAt = 1'060u;
+    EconomyChain glyph;
+    glyph.publicId = "chn_0123456789abcdef";
+    glyph.marketId = 7u;
+    glyph.group = EconomySubstitutionGroup::Glyph(56'000u, 1u);
+    glyph.demandQuantity = 1u;
+    glyph.remainingQuantity = 1u;
+    source.coordinator.chains.push_back(glyph);
+    EconomyChain gem = glyph;
+    gem.publicId = "chn_fedcba9876543210";
+    gem.group = EconomySubstitutionGroup::Gem(2u);
+    source.coordinator.chains.push_back(gem);
+
+    std::string const json = PlayerbotTelemetry::SerializeEconomy(source);
+    EXPECT_NE(json.find("\"kind\":\"glyph\""), std::string::npos);
+    EXPECT_NE(json.find("\"kind\":\"gem\""), std::string::npos);
+    EXPECT_EQ(json.find("\"kind\":\"exact_reagent\",\"exactItemId\":0"), std::string::npos);
+}
+
 TEST(PlayerbotTelemetryTest, EconomyCacheReusesSerializationUntilSourceGenerationChanges)
 {
     PlayerbotEconomyTelemetryCache cache;
