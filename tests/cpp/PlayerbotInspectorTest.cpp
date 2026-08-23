@@ -56,11 +56,13 @@ TEST(PlayerbotInspectorTest, EmptySectionsUseExplicitStableTypes)
 
     EXPECT_EQ(
         PlayerbotInspector::Serialize(inspection),
-        R"({"schemaVersion":1,"ok":true,"bot":{"name":"Unoccupied","level":1,"raceId":11,"classId":1,)"
+        R"({"schemaVersion":2,"ok":true,"bot":{"name":"Unoccupied","level":1,"raceId":11,"classId":1,)"
         R"("xp":0,"nextLevelXp":0},"behavior":{"activity":"inactive","state":"non-combat","action":"",)"
         R"("strategies":[]},"combat":{"inCombat":false,"target":null,"attackers":[]},"travel":{"available":false,)"
         R"("status":"unavailable","destination":null,"timeLeftMs":null,"retry":{"move":0,"extend":0}},)"
-        R"("personality":{"available":false,"version":null,"craftingAffinity":null,"explorationAffinity":null,)"
+        R"("rpgTarget":{"available":false,"type":null,"guid":null,"entry":null,"name":null,"npcFlags":null,)"
+        R"("distanceYards":null,"moving":null},"personality":{"available":false,"version":null,)"
+        R"("craftingAffinity":null,"explorationAffinity":null,)"
         R"("sociability":null,"voice":null},"possessions":{"equipment":[],"inventory":[]},"training":{"skills":[],)"
         R"("professions":[]}})");
 }
@@ -92,6 +94,17 @@ TEST(PlayerbotInspectorTest, EscapesNamesAndSerializesDetailedSections)
                 .moveRetry = 1,
                 .extendRetry = 2,
             },
+        .rpgTarget =
+            {
+                .available = true,
+                .type = "creature",
+                .guid = "Creature-0-1-14990-208472",
+                .entry = 14990,
+                .name = "Defilers Emissary",
+                .npcFlags = 1048577,
+                .distanceYards = 37.5f,
+                .moving = true,
+            },
         .personality =
             {
                 .available = true,
@@ -114,6 +127,10 @@ TEST(PlayerbotInspectorTest, EscapesNamesAndSerializesDetailedSections)
     EXPECT_NE(json.find(R"("action":"attack\\target\nnow")"), std::string::npos);
     EXPECT_NE(json.find(R"("strategies":["combat","dps"])"), std::string::npos);
     EXPECT_NE(json.find(R"("target":{"entry":123,"name":"Ghoul"})"), std::string::npos);
+    EXPECT_NE(json.find(R"("rpgTarget":{"available":true,"type":"creature",)"
+                        R"("guid":"Creature-0-1-14990-208472","entry":14990,"name":"Defilers Emissary",)"
+                        R"("npcFlags":1048577,"distanceYards":37.50,"moving":true})"),
+              std::string::npos);
     EXPECT_NE(
         json.find(
             R"("destination":{"type":"QuestTravelDestination","title":"A \"Cold\" Quest","distanceYards":42.50})"),
@@ -130,7 +147,7 @@ TEST(PlayerbotInspectorTest, EscapesNamesAndSerializesDetailedSections)
 TEST(PlayerbotInspectorTest, MissingBotUsesTypedJsonError)
 {
     EXPECT_EQ(PlayerbotInspector::BotNotFound(),
-              R"({"schemaVersion":1,"ok":false,"error":{"code":"bot_not_found","message":"Bot is not available."}})");
+              R"({"schemaVersion":2,"ok":false,"error":{"code":"bot_not_found","message":"Bot is not available."}})");
 }
 
 TEST(PlayerbotActionOutcomeTest, FailedActionAttemptIsAuthoritative)
@@ -529,6 +546,28 @@ TEST_F(PlayerbotInspectorIntegrationTest, VerificationInspectionUsesCurrentTrans
     bot->SetTransport(nullptr);
     std::string const detachedJson = PlayerbotInspector::InspectVerification(bot, botAI);
     EXPECT_NE(detachedJson.find(R"("transport":{"attached":false,"guid":"","entry":0})"), std::string::npos);
+}
+
+TEST_F(PlayerbotInspectorIntegrationTest, InspectionIncludesCurrentMovingPlayerRpgTarget)
+{
+    TestPlayer* bot = CreateTestPlayer(100, "InspectorBot");
+    bot->Relocate(0.0f, 0.0f, 0.0f, 0.0f);
+    PlayerbotAI* botAI = AddBot(bot);
+    ASSERT_NE(botAI, nullptr);
+
+    TestPlayer* target = CreateTestPlayer(101, "RpgTarget");
+    target->Relocate(25.0f, 0.0f, 0.0f, 0.0f);
+    ASSERT_NE(AddBot(target), nullptr);
+    target->SetUnitMovementFlags(MOVEMENTFLAG_FORWARD);
+    botAI->GetAiObjectContext()->GetValue<GuidPosition>("rpg target")->Set(GuidPosition(target));
+
+    std::string const json = PlayerbotInspector::Inspect(bot, botAI);
+
+    EXPECT_NE(json.find(R"("rpgTarget":{"available":true,"type":"player",)"), std::string::npos);
+    EXPECT_NE(json.find(R"("guid":")" + target->GetGUID().ToString() + R"(","entry":)" +
+                        std::to_string(target->GetEntry()) + R"(,"name":"RpgTarget",)"),
+              std::string::npos);
+    EXPECT_NE(json.find(R"("npcFlags":0,"distanceYards":25.00,"moving":true})"), std::string::npos);
 }
 
 TEST_F(PlayerbotInspectorIntegrationTest, VerificationInspectionIncludesOrdinaryTravelRouteState)

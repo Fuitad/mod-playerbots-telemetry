@@ -19,6 +19,7 @@
 #include "Bot/Personality/PlayerbotPersonalityMgr.h"
 #include "Bot/Telemetry/PlayerbotTelemetryState.h"
 #include "BudgetValues.h"
+#include "Creature.h"
 #include "DBCStores.h"
 #include "DBCStructure.h"
 #include "Group.h"
@@ -200,6 +201,41 @@ PlayerbotInspectionTravel InspectTravel(Player* bot, PlayerbotAI* botAI)
         travel.timeLeftMs = target->getTimeLeft();
 
     return travel;
+}
+
+std::string_view RpgTargetType(WorldObject* target)
+{
+    if (target->IsCreature())
+        return "creature";
+
+    if (target->IsPlayer())
+        return "player";
+
+    if (target->IsGameObject())
+        return "gameObject";
+
+    return "unknown";
+}
+
+PlayerbotInspectionRpgTarget InspectRpgTarget(Player* bot, PlayerbotAI* botAI)
+{
+    GuidPosition targetPosition = botAI->GetAiObjectContext()->GetValue<GuidPosition>("rpg target")->Get();
+    WorldObject* target = targetPosition.GetWorldObject();
+    if (!target || !target->IsInWorld())
+        return {};
+
+    Creature* creature = target->ToCreature();
+    Unit* unit = target->ToUnit();
+    return {
+        .available = true,
+        .type = std::string(RpgTargetType(target)),
+        .guid = target->GetGUID().ToString(),
+        .entry = target->GetEntry(),
+        .name = target->GetName(),
+        .npcFlags = creature ? static_cast<uint32>(creature->GetNpcFlags()) : 0,
+        .distanceYards = bot->GetExactDist(target),
+        .moving = unit && unit->isMoving(),
+    };
 }
 
 PlayerbotVerificationTravelPoint VerificationTravelPoint(WorldPosition point, WorldPosition botPosition)
@@ -607,6 +643,29 @@ void AppendTravel(std::ostringstream& out, PlayerbotInspectionTravel const& trav
     out << ",\"retry\":{\"move\":" << travel.moveRetry << ",\"extend\":" << travel.extendRetry << "}}";
 }
 
+void AppendRpgTarget(std::ostringstream& out, PlayerbotInspectionRpgTarget const& target)
+{
+    out << "{\"available\":" << (target.available ? "true" : "false");
+    if (!target.available)
+    {
+        out << R"(,"type":null,"guid":null,"entry":null,"name":null,"npcFlags":null,"distanceYards":null,)"
+               R"("moving":null})";
+        return;
+    }
+
+    out << ",\"type\":";
+    AppendJsonString(out, target.type);
+    out << ",\"guid\":";
+    AppendJsonString(out, target.guid);
+    out << ",\"entry\":" << target.entry << ",\"name\":";
+    AppendJsonString(out, target.name);
+    out << ",\"npcFlags\":" << target.npcFlags;
+    out << std::fixed << std::setprecision(2);
+    out << ",\"distanceYards\":" << target.distanceYards;
+    out << std::defaultfloat;
+    out << ",\"moving\":" << (target.moving ? "true" : "false") << '}';
+}
+
 void AppendPersonality(std::ostringstream& out, PlayerbotInspectionPersonality const& personality)
 {
     out << "{\"available\":" << (personality.available ? "true" : "false");
@@ -848,6 +907,7 @@ std::string PlayerbotInspector::Inspect(Player* bot, PlayerbotAI* botAI)
         .inCombat = bot->IsInCombat(),
         .target = InspectUnit(botAI->GetAiObjectContext()->GetValue<Unit*>("current target")->Get()),
         .travel = InspectTravel(bot, botAI),
+        .rpgTarget = InspectRpgTarget(bot, botAI),
         .personality = InspectPersonality(bot),
     };
 
@@ -886,6 +946,8 @@ std::string PlayerbotInspector::Serialize(PlayerbotInspection const& inspection)
     AppendUnits(out, inspection.attackers);
     out << "},\"travel\":";
     AppendTravel(out, inspection.travel);
+    out << ",\"rpgTarget\":";
+    AppendRpgTarget(out, inspection.rpgTarget);
     out << ",\"personality\":";
     AppendPersonality(out, inspection.personality);
     out << ",\"possessions\":{\"equipment\":";
@@ -1156,7 +1218,7 @@ std::string PlayerbotInspector::InspectVerification(Player* bot, PlayerbotAI* bo
 
 std::string PlayerbotInspector::BotNotFound()
 {
-    return R"({"schemaVersion":1,"ok":false,"error":{"code":"bot_not_found","message":"Bot is not available."}})";
+    return R"({"schemaVersion":2,"ok":false,"error":{"code":"bot_not_found","message":"Bot is not available."}})";
 }
 
 std::string PlayerbotInspector::VerificationBotNotFound()

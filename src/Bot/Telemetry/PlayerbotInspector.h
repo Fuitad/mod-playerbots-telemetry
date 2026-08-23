@@ -14,7 +14,7 @@
 #include "Bot/Telemetry/PlayerbotVerificationState.h"
 #include "Define.h"
 
-inline constexpr uint32 PLAYERBOT_INSPECTION_SCHEMA_VERSION = 1;
+inline constexpr uint32 PLAYERBOT_INSPECTION_SCHEMA_VERSION = 2;
 inline constexpr uint32 PLAYERBOT_VERIFICATION_INSPECTION_SCHEMA_VERSION = 3;
 
 class Player;
@@ -25,6 +25,18 @@ struct PlayerbotInspectionUnit
     bool available = false;
     uint32 entry = 0;
     std::string name;
+};
+
+struct PlayerbotInspectionRpgTarget
+{
+    bool available = false;
+    std::string type;
+    std::string guid;
+    uint32 entry = 0;
+    std::string name;
+    uint32 npcFlags = 0;
+    float distanceYards = 0.0f;
+    bool moving = false;
 };
 
 struct PlayerbotInspectionTravel
@@ -212,6 +224,7 @@ struct PlayerbotInspection
     PlayerbotInspectionUnit target;
     std::vector<PlayerbotInspectionUnit> attackers;
     PlayerbotInspectionTravel travel;
+    PlayerbotInspectionRpgTarget rpgTarget;
     PlayerbotInspectionPersonality personality;
     std::vector<PlayerbotInspectionEquipment> equipment;
     std::vector<PlayerbotInspectionItem> inventory;

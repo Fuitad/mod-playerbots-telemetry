@@ -10,6 +10,8 @@ and remote command hooks.
 
 The module owns the `telemetry,0` and `inspect,<guid>` command responses. It reads public Personality and Economy
 interfaces and never grants gameplay authority to a telemetry caller.
+The inspection response reports the current RPG target type, GUID, entry, name, NPC flags, distance, and movement
+state when the target is available.
 
 ## Dependencies
 
