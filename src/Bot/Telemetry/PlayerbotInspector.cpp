@@ -1018,6 +1018,9 @@ std::string PlayerbotInspector::SerializeVerification(PlayerbotVerificationInspe
     out << ",\"travel\":";
     AppendVerificationTravel(out, inspection.travel);
 
+    out << ",\"rpgTarget\":";
+    AppendRpgTarget(out, inspection.rpgTarget);
+
     out << ",\"action\":{\"lastExecutedAction\":";
     AppendJsonString(out, inspection.lastExecutedAction);
     out << ",\"latestAttempt\":";
@@ -1135,6 +1138,7 @@ PlayerbotVerificationInspection PlayerbotInspector::BuildVerification(Player* bo
                 .movementState = bot->IsBeingTeleported() ? "teleporting" : (bot->isMoving() ? "moving" : "stationary"),
             },
         .travel = InspectVerificationTravel(bot, botAI),
+        .rpgTarget = InspectRpgTarget(bot, botAI),
         .lastExecutedAction = std::move(lastExecutedAction),
         .actionHistory = published.actionHistory,
         .moneyCopper = bot->GetMoney(),
@@ -1223,5 +1227,5 @@ std::string PlayerbotInspector::BotNotFound()
 
 std::string PlayerbotInspector::VerificationBotNotFound()
 {
-    return R"({"schemaVersion":3,"ok":false,"error":{"code":"bot_not_found","message":"Bot is not available."}})";
+    return R"({"schemaVersion":4,"ok":false,"error":{"code":"bot_not_found","message":"Bot is not available."}})";
 }

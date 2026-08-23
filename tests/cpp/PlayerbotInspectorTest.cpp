@@ -148,6 +148,8 @@ TEST(PlayerbotInspectorTest, MissingBotUsesTypedJsonError)
 {
     EXPECT_EQ(PlayerbotInspector::BotNotFound(),
               R"({"schemaVersion":2,"ok":false,"error":{"code":"bot_not_found","message":"Bot is not available."}})");
+    EXPECT_EQ(PlayerbotInspector::VerificationBotNotFound(),
+              R"({"schemaVersion":4,"ok":false,"error":{"code":"bot_not_found","message":"Bot is not available."}})");
 }
 
 TEST(PlayerbotActionOutcomeTest, FailedActionAttemptIsAuthoritative)
@@ -406,6 +408,17 @@ TEST(PlayerbotInspectorTest, VerificationSerializationIncludesTypedCompleteness)
                 .movementState = "moving",
             },
         .transport = {.attached = true, .guid = "Transport-1", .entry = 176244},
+        .rpgTarget =
+            {
+                .available = true,
+                .type = "creature",
+                .guid = "Creature-0-1-14990-208472",
+                .entry = 14990,
+                .name = "Defilers Emissary",
+                .npcFlags = 1048577,
+                .distanceYards = 37.5f,
+                .moving = true,
+            },
         .lastExecutedAction = "follow",
         .actionHistory = state.CopyActionHistory(),
         .snapshotTimestampMs = 160,
@@ -423,11 +436,15 @@ TEST(PlayerbotInspectorTest, VerificationSerializationIncludesTypedCompleteness)
     std::string const attemptHistory = R"("attempts":[{"sequence":1,"timestampMs":100,"ageMs":60,"success":false,)"
                                        R"("actionName":"follow","nameTruncated":false}])";
 
-    EXPECT_NE(json.find(R"("schemaVersion":3)"), std::string::npos);
+    EXPECT_NE(json.find(R"("schemaVersion":4)"), std::string::npos);
     EXPECT_NE(json.find(R"("master":{"available":true,"guid":"Player-1-3","name":"Pierre","relationshipValid":true})"),
               std::string::npos);
     EXPECT_NE(json.find(R"("attached":true,"guid":"Transport-1","entry":176244)"), std::string::npos);
     EXPECT_NE(json.find(R"("travel":{"available":false)"), std::string::npos);
+    EXPECT_NE(json.find(R"("rpgTarget":{"available":true,"type":"creature",)"
+                        R"("guid":"Creature-0-1-14990-208472","entry":14990,"name":"Defilers Emissary",)"
+                        R"("npcFlags":1048577,"distanceYards":37.50,"moving":true})"),
+              std::string::npos);
     EXPECT_NE(json.find(latestAttempt), std::string::npos);
     EXPECT_NE(json.find(attemptHistory), std::string::npos);
     EXPECT_NE(json.find(R"("totalCount":1,"returnedCount":1,"truncated":false)"), std::string::npos);
@@ -568,6 +585,14 @@ TEST_F(PlayerbotInspectorIntegrationTest, InspectionIncludesCurrentMovingPlayerR
                         std::to_string(target->GetEntry()) + R"(,"name":"RpgTarget",)"),
               std::string::npos);
     EXPECT_NE(json.find(R"("npcFlags":0,"distanceYards":25.00,"moving":true})"), std::string::npos);
+
+    PlayerbotInspectionRpgTarget const verificationTarget = PlayerbotInspector::BuildVerification(bot, botAI).rpgTarget;
+    EXPECT_TRUE(verificationTarget.available);
+    EXPECT_EQ(verificationTarget.type, "player");
+    EXPECT_EQ(verificationTarget.guid, target->GetGUID().ToString());
+    EXPECT_EQ(verificationTarget.name, "RpgTarget");
+    EXPECT_FLOAT_EQ(verificationTarget.distanceYards, 25.0f);
+    EXPECT_TRUE(verificationTarget.moving);
 }
 
 TEST_F(PlayerbotInspectorIntegrationTest, VerificationInspectionIncludesOrdinaryTravelRouteState)

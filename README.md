@@ -12,6 +12,7 @@ The module owns the `telemetry,0` and `inspect,<guid>` command responses. It rea
 interfaces and never grants gameplay authority to a telemetry caller.
 The inspection response reports the current RPG target type, GUID, entry, name, NPC flags, distance, and movement
 state when the target is available.
+Verification inspection schema version 4 exposes the same `rpgTarget` section to typed MCP consumers.
 
 ## Dependencies
 

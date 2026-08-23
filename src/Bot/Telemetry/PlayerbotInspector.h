@@ -15,7 +15,7 @@
 #include "Define.h"
 
 inline constexpr uint32 PLAYERBOT_INSPECTION_SCHEMA_VERSION = 2;
-inline constexpr uint32 PLAYERBOT_VERIFICATION_INSPECTION_SCHEMA_VERSION = 3;
+inline constexpr uint32 PLAYERBOT_VERIFICATION_INSPECTION_SCHEMA_VERSION = 4;
 
 class Player;
 class PlayerbotAI;
@@ -188,6 +188,7 @@ struct PlayerbotVerificationInspection
     PlayerbotVerificationPosition position;
     PlayerbotVerificationTransport transport;
     PlayerbotVerificationTravel travel;
+    PlayerbotInspectionRpgTarget rpgTarget;
     std::string lastExecutedAction;
     PlayerbotVerificationActionHistory actionHistory;
     uint64 snapshotTimestampMs = 0;
