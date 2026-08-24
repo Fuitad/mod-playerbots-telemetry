@@ -15,10 +15,13 @@
 #include "Define.h"
 
 inline constexpr uint32 PLAYERBOT_INSPECTION_SCHEMA_VERSION = 2;
-inline constexpr uint32 PLAYERBOT_VERIFICATION_INSPECTION_SCHEMA_VERSION = 4;
+inline constexpr uint32 PLAYERBOT_VERIFICATION_INSPECTION_SCHEMA_VERSION = 5;
+inline constexpr uint32 PLAYERBOT_VERIFICATION_IDLE_TRAVEL_MAX_MS = 5 * 60 * 1000;
 
 class Player;
 class PlayerbotAI;
+class Corpse;
+class PlayerbotInspectorTestAccess;
 
 struct PlayerbotInspectionUnit
 {
@@ -67,6 +70,9 @@ struct PlayerbotInspectionEquipment
     uint32 itemId = 0;
     std::string name;
     uint32 count = 0;
+    uint32 durability = 0;
+    uint32 maximumDurability = 0;
+    bool broken = false;
 };
 
 struct PlayerbotInspectionItem
@@ -137,6 +143,11 @@ struct PlayerbotVerificationTransport
     uint32 entry = 0;
 };
 
+struct PlayerbotVerificationMovement
+{
+    bool canMove = false;
+};
+
 struct PlayerbotVerificationTravelPoint
 {
     bool available = false;
@@ -167,13 +178,49 @@ struct PlayerbotVerificationTravel
 {
     bool available = false;
     std::string status = "unavailable";
+    bool idleNoDestination = false;
+    bool destinationAvailable = false;
     std::string destinationType;
     std::string destinationTitle;
-    float distanceYards = 0.0f;
+    std::optional<float> distanceYards;
+    std::optional<uint32> timeLeftMs;
     bool forced = false;
-    bool canMove = false;
     PlayerbotVerificationTravelRoute route;
     PlayerbotVerificationLastMovement lastMovement;
+};
+
+struct PlayerbotVerificationCorpse
+{
+    bool present = false;
+    bool loaded = false;
+    std::optional<uint32> mapId;
+    std::optional<float> distanceYards;
+    bool sameMap = false;
+    bool withinReclaimRadius = false;
+    std::optional<uint64> reclaimDelayRemainingSeconds;
+    bool reclaimReady = false;
+};
+
+struct PlayerbotVerificationLatestRevive
+{
+    bool available = false;
+    uint64 timestampMs = 0;
+    uint64 ageMs = 0;
+    uint64 attemptGeneration = 0;
+    bool currentCycle = false;
+    bool success = false;
+    bool aliveAfter = false;
+};
+
+struct PlayerbotVerificationRecovery
+{
+    uint64 observedAtMs = 0;
+    uint64 currentDeathGeneration = 0;
+    bool alive = true;
+    bool ghost = false;
+    bool inArena = false;
+    PlayerbotVerificationCorpse corpse;
+    PlayerbotVerificationLatestRevive latestRevive;
 };
 
 struct PlayerbotVerificationInspection
@@ -187,7 +234,9 @@ struct PlayerbotVerificationInspection
     PlayerbotVerificationGroup group;
     PlayerbotVerificationPosition position;
     PlayerbotVerificationTransport transport;
+    PlayerbotVerificationMovement movement;
     PlayerbotVerificationTravel travel;
+    PlayerbotVerificationRecovery recovery;
     PlayerbotInspectionRpgTarget rpgTarget;
     std::string lastExecutedAction;
     PlayerbotVerificationActionHistory actionHistory;
@@ -245,6 +294,11 @@ public:
     static std::string SerializeVerification(PlayerbotVerificationInspection const& inspection);
     static std::string BotNotFound();
     static std::string VerificationBotNotFound();
+
+private:
+    static PlayerbotVerificationRecovery InspectVerificationRecovery(Player* bot, PlayerbotAI* botAI, Corpse* corpse);
+
+    friend class PlayerbotInspectorTestAccess;
 };
 
 #endif

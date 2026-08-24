@@ -19,6 +19,8 @@
 #include "Bot/Telemetry/PlayerbotInspector.h"
 #include "Bot/Telemetry/PlayerbotTelemetryState.h"
 #include "Bot/Telemetry/PlayerbotVerificationState.h"
+#include "Corpse.h"
+#include "GameTime.h"
 #include "IntegrationTestFixture.h"
 #include "LastMovementValue.h"
 #include "ObjectAccessor.h"
@@ -27,8 +29,23 @@
 #include "TravelMgr.h"
 #include "gtest/gtest.h"
 
+class PlayerbotInspectorTestAccess
+{
+public:
+    static PlayerbotVerificationRecovery InspectRecovery(Player* bot, PlayerbotAI* botAI, Corpse* corpse)
+    {
+        return PlayerbotInspector::InspectVerificationRecovery(bot, botAI, corpse);
+    }
+};
+
 namespace
 {
+class TestInstanceIdentityMap final : public Map
+{
+public:
+    TestInstanceIdentityMap() : Map(0, 1, REGULAR_DIFFICULTY, nullptr) {}
+};
+
 class TestStaticTransport : public StaticTransport
 {
 public:
@@ -149,7 +166,7 @@ TEST(PlayerbotInspectorTest, MissingBotUsesTypedJsonError)
     EXPECT_EQ(PlayerbotInspector::BotNotFound(),
               R"({"schemaVersion":2,"ok":false,"error":{"code":"bot_not_found","message":"Bot is not available."}})");
     EXPECT_EQ(PlayerbotInspector::VerificationBotNotFound(),
-              R"({"schemaVersion":4,"ok":false,"error":{"code":"bot_not_found","message":"Bot is not available."}})");
+              R"({"schemaVersion":5,"ok":false,"error":{"code":"bot_not_found","message":"Bot is not available."}})");
 }
 
 TEST(PlayerbotActionOutcomeTest, FailedActionAttemptIsAuthoritative)
@@ -314,6 +331,7 @@ TEST(PlayerbotVerificationStateTest, CareerEconomyAndActionSnapshotsAreCoherentA
         .knownRecipeCompleteness = {.totalCount = 2u, .returnedCount = 2u, .truncated = false},
         .economy = before.economy,
     };
+    inspection.economy.observedAt = 1700000500u;
 
     std::string const json = PlayerbotInspector::SerializeVerification(inspection);
     PlayerbotVerificationSnapshot const after = state.CopySnapshot();
@@ -326,7 +344,9 @@ TEST(PlayerbotVerificationStateTest, CareerEconomyAndActionSnapshotsAreCoherentA
     EXPECT_NE(json.find(R"("knownRecipeSpellIds":{"items":[3001,3002],"completeness":{"totalCount":2,)"
                         R"("returnedCount":2,"truncated":false}})"),
               std::string::npos);
-    EXPECT_NE(json.find(R"("economy":{"available":true,"sequence":1,"phase":"buy_recipe")"), std::string::npos);
+    EXPECT_NE(json.find(R"("economy":{"available":true,"sequence":1,"observedAt":1700000500,)"
+                        R"("phase":"buy_recipe")"),
+              std::string::npos);
     EXPECT_NE(json.find(R"("outcome":"scheduled","chainPublicId":"","operationIdentity":"")"), std::string::npos);
     EXPECT_NE(json.find(R"("workOrderSpellId":2001,"remainingQuantity":0,"claimAgeSeconds":0)"), std::string::npos);
     EXPECT_NE(json.find(R"("consecutiveFailures":3,"cooldownSeconds":0,"nextEligibleTime":5000)"), std::string::npos);
@@ -408,6 +428,42 @@ TEST(PlayerbotInspectorTest, VerificationSerializationIncludesTypedCompleteness)
                 .movementState = "moving",
             },
         .transport = {.attached = true, .guid = "Transport-1", .entry = 176244},
+        .movement = {.canMove = true},
+        .travel =
+            {
+                .available = true,
+                .status = "cooldown",
+                .idleNoDestination = true,
+                .timeLeftMs = 120000,
+            },
+        .recovery =
+            {
+                .observedAtMs = 1700000001000ULL,
+                .currentDeathGeneration = 8,
+                .alive = false,
+                .ghost = true,
+                .corpse =
+                    {
+                        .present = true,
+                        .loaded = true,
+                        .mapId = 0,
+                        .distanceYards = 12.5f,
+                        .sameMap = true,
+                        .withinReclaimRadius = true,
+                        .reclaimDelayRemainingSeconds = 0,
+                        .reclaimReady = true,
+                    },
+                .latestRevive =
+                    {
+                        .available = true,
+                        .timestampMs = 1700000000000ULL,
+                        .ageMs = 1000,
+                        .attemptGeneration = 7,
+                        .currentCycle = false,
+                        .success = false,
+                        .aliveAfter = false,
+                    },
+            },
         .rpgTarget =
             {
                 .available = true,
@@ -422,6 +478,14 @@ TEST(PlayerbotInspectorTest, VerificationSerializationIncludesTypedCompleteness)
         .lastExecutedAction = "follow",
         .actionHistory = state.CopyActionHistory(),
         .snapshotTimestampMs = 160,
+        .equipmentCompleteness = {.totalCount = 1, .returnedCount = 1, .truncated = false},
+        .equipment = {{.slot = 15,
+                       .itemId = 1001,
+                       .name = "Steel Sword",
+                       .count = 1,
+                       .durability = 0,
+                       .maximumDurability = 65,
+                       .broken = true}},
         .inventoryCompleteness = {.totalCount = 1, .returnedCount = 1, .truncated = false},
         .inventory = {{.itemId = 6948, .name = "Hearthstone", .count = 1}},
         .skillsCompleteness = {.totalCount = 1, .returnedCount = 1, .truncated = false},
@@ -436,11 +500,25 @@ TEST(PlayerbotInspectorTest, VerificationSerializationIncludesTypedCompleteness)
     std::string const attemptHistory = R"("attempts":[{"sequence":1,"timestampMs":100,"ageMs":60,"success":false,)"
                                        R"("actionName":"follow","nameTruncated":false}])";
 
-    EXPECT_NE(json.find(R"("schemaVersion":4)"), std::string::npos);
+    EXPECT_NE(json.find(R"("schemaVersion":5)"), std::string::npos);
     EXPECT_NE(json.find(R"("master":{"available":true,"guid":"Player-1-3","name":"Pierre","relationshipValid":true})"),
               std::string::npos);
     EXPECT_NE(json.find(R"("attached":true,"guid":"Transport-1","entry":176244)"), std::string::npos);
-    EXPECT_NE(json.find(R"("travel":{"available":false)"), std::string::npos);
+    EXPECT_NE(json.find(R"("movement":{"canMove":true})"), std::string::npos);
+    EXPECT_NE(json.find(R"("travel":{"available":true,"status":"cooldown","idleNoDestination":true,)"
+                        R"("destination":null,"timeLeftMs":120000)"),
+              std::string::npos);
+    EXPECT_NE(json.find(R"("recovery":{"observedAtMs":1700000001000,"currentDeathGeneration":8,)"
+                        R"("alive":false,"ghost":true,"inArena":false,)"
+                        R"("corpse":{"present":true,"loaded":true,"mapId":0,"distanceYards":12.500,)"
+                        R"("sameMap":true,"withinReclaimRadius":true,"reclaimDelayRemainingSeconds":0,)"
+                        R"("reclaimReady":true},"latestRevive":{"available":true,"timestampMs":1700000000000,)"
+                        R"("ageMs":1000,"attemptGeneration":7,"currentCycle":false,"success":false,)"
+                        R"("aliveAfter":false}})"),
+              std::string::npos);
+    EXPECT_NE(json.find(R"("equipment":{"items":[{"slot":15,"itemId":1001,"name":"Steel Sword","count":1,)"
+                        R"("durability":0,"maximumDurability":65,"broken":true}])"),
+              std::string::npos);
     EXPECT_NE(json.find(R"("rpgTarget":{"available":true,"type":"creature",)"
                         R"("guid":"Creature-0-1-14990-208472","entry":14990,"name":"Defilers Emissary",)"
                         R"("npcFlags":1048577,"distanceYards":37.50,"moving":true})"),
@@ -613,11 +691,12 @@ TEST_F(PlayerbotInspectorIntegrationTest, VerificationInspectionIncludesOrdinary
     movement.lastPath.addPoint(destination, NODE_PATH);
     movement.Set(bot->GetMapId(), 10.0f, 0.0f, 0.0f, 0.0f, 5000.0f, MovementPriority::MOVEMENT_FORCED);
 
-    PlayerbotVerificationTravel const travel = PlayerbotInspector::BuildVerification(bot, botAI).travel;
+    PlayerbotVerificationInspection const inspection = PlayerbotInspector::BuildVerification(bot, botAI);
+    PlayerbotVerificationTravel const& travel = inspection.travel;
 
     EXPECT_TRUE(travel.available);
     EXPECT_TRUE(travel.forced);
-    EXPECT_TRUE(travel.canMove);
+    EXPECT_TRUE(inspection.movement.canMove);
     EXPECT_EQ(travel.route.pointCount, 2U);
     EXPECT_TRUE(travel.route.nextPoint.available);
     EXPECT_FLOAT_EQ(travel.route.nextPoint.x, 40.0f);
@@ -625,6 +704,83 @@ TEST_F(PlayerbotInspectorIntegrationTest, VerificationInspectionIncludesOrdinary
     EXPECT_FLOAT_EQ(travel.lastMovement.point.x, 10.0f);
 
     target->releaseVisitors();
+}
+
+TEST_F(PlayerbotInspectorIntegrationTest, VerificationInspectionReportsNullTravelAsIdleWithoutHidingMovement)
+{
+    TestPlayer* bot = CreateTestPlayer(100, "InspectorBot");
+    PlayerbotAI* botAI = AddBot(bot);
+    ASSERT_NE(botAI, nullptr);
+
+    NullTravelDestination idleDestination(PLAYERBOT_VERIFICATION_IDLE_TRAVEL_MAX_MS + 1000);
+    WorldPosition noDestination;
+    TravelTarget* target = botAI->GetAiObjectContext()->GetValue<TravelTarget*>("travel target")->Get();
+    target->setTarget(&idleDestination, &noDestination, true);
+    target->setStatus(TRAVEL_STATUS_COOLDOWN);
+
+    PlayerbotVerificationInspection const inspection = PlayerbotInspector::BuildVerification(bot, botAI);
+
+    EXPECT_TRUE(inspection.movement.canMove);
+    EXPECT_TRUE(inspection.travel.available);
+    EXPECT_EQ(inspection.travel.status, "cooldown");
+    EXPECT_TRUE(inspection.travel.idleNoDestination);
+    EXPECT_FALSE(inspection.travel.destinationAvailable);
+    EXPECT_FALSE(inspection.travel.distanceYards.has_value());
+    ASSERT_TRUE(inspection.travel.timeLeftMs.has_value());
+    EXPECT_EQ(*inspection.travel.timeLeftMs, PLAYERBOT_VERIFICATION_IDLE_TRAVEL_MAX_MS);
+    EXPECT_TRUE(inspection.recovery.alive);
+    EXPECT_FALSE(inspection.recovery.corpse.present);
+    EXPECT_FALSE(inspection.recovery.latestRevive.available);
+
+    target->releaseVisitors();
+}
+
+TEST_F(PlayerbotInspectorIntegrationTest, VerificationInspectionPreservesLatestAuthoritativeReviveOutcome)
+{
+    TestPlayer* bot = CreateTestPlayer(100, "InspectorBot");
+    PlayerbotAI* botAI = AddBot(bot);
+    ASSERT_NE(botAI, nullptr);
+    uint64 const timestampMs = GameTime::GetGameTimeMS().count();
+    botAI->RecordReviveAttempt(timestampMs, false, false);
+
+    PlayerbotVerificationRecovery const recovery = PlayerbotInspector::BuildVerification(bot, botAI).recovery;
+
+    EXPECT_TRUE(recovery.alive);
+    EXPECT_GE(recovery.observedAtMs, timestampMs);
+    EXPECT_EQ(recovery.currentDeathGeneration, 0U);
+    EXPECT_TRUE(recovery.latestRevive.available);
+    EXPECT_EQ(recovery.latestRevive.timestampMs, timestampMs);
+    EXPECT_EQ(recovery.latestRevive.ageMs, recovery.observedAtMs - recovery.latestRevive.timestampMs);
+    EXPECT_EQ(recovery.latestRevive.attemptGeneration, 0U);
+    EXPECT_TRUE(recovery.latestRevive.currentCycle);
+    EXPECT_FALSE(recovery.latestRevive.success);
+    EXPECT_FALSE(recovery.latestRevive.aliveAfter);
+}
+
+TEST_F(PlayerbotInspectorIntegrationTest, VerificationRecoveryRejectsSameMapIdFromAnotherInstance)
+{
+    TestPlayer* bot = CreateTestPlayer(100, "InspectorBot");
+    PlayerbotAI* botAI = AddBot(bot);
+    ASSERT_NE(botAI, nullptr);
+
+    TestInstanceIdentityMap otherInstance;
+    Corpse corpse;
+    ASSERT_TRUE(corpse.Create(200));
+    corpse.SetMap(&otherInstance);
+    corpse.AddToWorld();
+
+    PlayerbotVerificationRecovery const recovery = PlayerbotInspectorTestAccess::InspectRecovery(bot, botAI, &corpse);
+
+    EXPECT_TRUE(recovery.corpse.present);
+    EXPECT_TRUE(recovery.corpse.loaded);
+    ASSERT_TRUE(recovery.corpse.mapId.has_value());
+    EXPECT_EQ(*recovery.corpse.mapId, bot->GetMapId());
+    EXPECT_FALSE(recovery.corpse.sameMap);
+    EXPECT_FALSE(recovery.corpse.distanceYards.has_value());
+    EXPECT_FALSE(recovery.corpse.withinReclaimRadius);
+    EXPECT_FALSE(recovery.corpse.reclaimReady);
+
+    corpse.RemoveFromWorld();
 }
 
 /*

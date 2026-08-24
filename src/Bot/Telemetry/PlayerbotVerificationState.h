@@ -99,6 +99,7 @@ enum class PlayerbotVerificationEconomyPhase : uint8
 struct PlayerbotVerificationEconomyObservation
 {
     uint64 sequence = 0;
+    uint64 observedAt = 0;
     PlayerbotVerificationEconomyOutcome outcome = PlayerbotVerificationEconomyOutcome::Unavailable;
     PlayerbotVerificationEconomyPhase phase = PlayerbotVerificationEconomyPhase::None;
     std::string chainPublicId;

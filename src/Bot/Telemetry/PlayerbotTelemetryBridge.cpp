@@ -123,6 +123,7 @@ PlayerbotVerificationSnapshot PlayerbotTelemetryCopyVerification(PlayerbotAI* bo
     {
         snapshot.economy = {
             .sequence = economy->sequence,
+            .observedAt = economy->observedAt,
             .outcome = EconomyOutcome(economy->outcome),
             .phase = EconomyPhase(economy->phase),
             .chainPublicId = economy->chainPublicId,

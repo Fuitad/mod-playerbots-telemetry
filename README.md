@@ -12,7 +12,10 @@ The module owns the `telemetry,0` and `inspect,<guid>` command responses. It rea
 interfaces and never grants gameplay authority to a telemetry caller.
 The inspection response reports the current RPG target type, GUID, entry, name, NPC flags, distance, and movement
 state when the target is available.
-Verification inspection schema version 4 exposes the same `rpgTarget` section to typed MCP consumers.
+Verification inspection schema version 5 exposes the same `rpgTarget` section to typed MCP consumers. It also
+reports movement capability independently from TravelMgr state, explicit idle travel cooldowns, equipped item
+durability, corpse reclaim readiness, and the latest authoritative revive outcome. Revive inspection includes event
+age and death generation identity, so a later physical death marks the prior outcome outside the current cycle.
 
 ## Dependencies
 

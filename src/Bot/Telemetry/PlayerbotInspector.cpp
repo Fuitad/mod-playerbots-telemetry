@@ -19,9 +19,11 @@
 #include "Bot/Personality/PlayerbotPersonalityMgr.h"
 #include "Bot/Telemetry/PlayerbotTelemetryState.h"
 #include "BudgetValues.h"
+#include "Corpse.h"
 #include "Creature.h"
 #include "DBCStores.h"
 #include "DBCStructure.h"
+#include "GameTime.h"
 #include "Group.h"
 #include "Item.h"
 #include "LastMovementValue.h"
@@ -260,24 +262,17 @@ PlayerbotVerificationTravel InspectVerificationTravel(Player* bot, PlayerbotAI* 
         return {};
 
     TravelDestination* destination = target->getDestination();
-    if (!destination || dynamic_cast<NullTravelDestination*>(destination))
-        return {};
-
     WorldPosition botPosition(bot);
-    WorldPosition* targetPosition = target->getPosition();
-    if (!targetPosition)
-        return {};
     LastMovement& movement = botAI->GetAiObjectContext()->GetValue<LastMovement&>("last movement")->Get();
     TravelPath route = movement.lastPath;
+    bool const idleNoDestination = !destination || dynamic_cast<NullTravelDestination*>(destination);
 
     PlayerbotVerificationTravel travel = {
         .available = true,
         .status = std::string(TravelStatusName(target->getStatus())),
-        .destinationType = destination->getName(),
-        .destinationTitle = destination->getTitle(),
-        .distanceYards = targetPosition->distance(botPosition),
+        .idleNoDestination = idleNoDestination,
+        .destinationAvailable = destination && !idleNoDestination,
         .forced = target->isForced(),
-        .canMove = botAI->CanMove(),
         .route = {.pointCount = static_cast<uint32>(route.getPath().size())},
         .lastMovement =
             {
@@ -287,6 +282,24 @@ PlayerbotVerificationTravel InspectVerificationTravel(Player* bot, PlayerbotAI* 
                 .priority = std::string(MovementPriorityName(movement.priority)),
             },
     };
+
+    if (travel.destinationAvailable)
+    {
+        travel.destinationType = destination->getName();
+        travel.destinationTitle = destination->getTitle();
+        WorldPosition* targetPosition = target->getPosition();
+        if (targetPosition && !(*targetPosition == WorldPosition()))
+            travel.distanceYards = targetPosition->distance(botPosition);
+    }
+
+    if (idleNoDestination)
+    {
+        travel.timeLeftMs = std::min(target->getTimeLeft(), PLAYERBOT_VERIFICATION_IDLE_TRAVEL_MAX_MS);
+    }
+    else if (target->getStatus() != TRAVEL_STATUS_NONE && target->getStatus() != TRAVEL_STATUS_EXPIRED)
+    {
+        travel.timeLeftMs = target->getTimeLeft();
+    }
 
     if (!route.empty())
     {
@@ -357,6 +370,10 @@ void InspectPossessions(Player* bot, PlayerbotInspection& inspection)
             .itemId = item->GetEntry(),
             .name = ItemName(item),
             .count = item->GetCount(),
+            .durability = item->GetUInt32Value(ITEM_FIELD_DURABILITY),
+            .maximumDurability = item->GetUInt32Value(ITEM_FIELD_MAXDURABILITY),
+            .broken =
+                item->GetUInt32Value(ITEM_FIELD_MAXDURABILITY) > 0 && item->GetUInt32Value(ITEM_FIELD_DURABILITY) == 0,
         });
     }
 
@@ -685,7 +702,7 @@ void AppendPersonality(std::ostringstream& out, PlayerbotInspectionPersonality c
 }
 
 void AppendEquipment(std::ostringstream& out, std::vector<PlayerbotInspectionEquipment> const& equipment,
-                     std::size_t limit)
+                     std::size_t limit, bool includeDurability)
 {
     out << '[';
     std::size_t const count = std::min(equipment.size(), limit);
@@ -696,7 +713,14 @@ void AppendEquipment(std::ostringstream& out, std::vector<PlayerbotInspectionEqu
         PlayerbotInspectionEquipment const& item = equipment[index];
         out << "{\"slot\":" << item.slot << ",\"itemId\":" << item.itemId << ",\"name\":";
         AppendJsonString(out, item.name);
-        out << ",\"count\":" << item.count << '}';
+        out << ",\"count\":" << item.count;
+        if (includeDurability)
+        {
+            out << ",\"durability\":" << item.durability;
+            out << ",\"maximumDurability\":" << item.maximumDurability;
+            out << ",\"broken\":" << (item.broken ? "true" : "false");
+        }
+        out << '}';
     }
     out << ']';
 }
@@ -858,15 +882,31 @@ void AppendVerificationTravel(std::ostringstream& out, PlayerbotVerificationTrav
     out << "{\"available\":" << (travel.available ? "true" : "false");
     out << ",\"status\":";
     AppendJsonString(out, travel.status);
-    out << ",\"destination\":{\"type\":";
-    AppendJsonString(out, travel.destinationType);
-    out << ",\"title\":";
-    AppendJsonString(out, travel.destinationTitle);
-    out << std::fixed << std::setprecision(3);
-    out << ",\"distanceYards\":" << travel.distanceYards;
-    out << std::defaultfloat << '}';
+    out << ",\"idleNoDestination\":" << (travel.idleNoDestination ? "true" : "false");
+    out << ",\"destination\":";
+    if (!travel.destinationAvailable)
+    {
+        out << "null";
+    }
+    else
+    {
+        out << "{\"type\":";
+        AppendJsonString(out, travel.destinationType);
+        out << ",\"title\":";
+        AppendJsonString(out, travel.destinationTitle);
+        out << ",\"distanceYards\":";
+        if (travel.distanceYards)
+            out << std::fixed << std::setprecision(3) << *travel.distanceYards << std::defaultfloat;
+        else
+            out << "null";
+        out << '}';
+    }
+    out << ",\"timeLeftMs\":";
+    if (travel.timeLeftMs)
+        out << *travel.timeLeftMs;
+    else
+        out << "null";
     out << ",\"forced\":" << (travel.forced ? "true" : "false");
-    out << ",\"canMove\":" << (travel.canMove ? "true" : "false");
     out << ",\"route\":{\"pointCount\":" << travel.route.pointCount;
     out << ",\"nextPathType\":";
     AppendJsonString(out, travel.route.nextPathType);
@@ -881,7 +921,96 @@ void AppendVerificationTravel(std::ostringstream& out, PlayerbotVerificationTrav
     AppendJsonString(out, travel.lastMovement.priority);
     out << "}}";
 }
+
+void AppendVerificationRecovery(std::ostringstream& out, PlayerbotVerificationRecovery const& recovery)
+{
+    out << "{\"observedAtMs\":" << recovery.observedAtMs;
+    out << ",\"currentDeathGeneration\":" << recovery.currentDeathGeneration;
+    out << ",\"alive\":" << (recovery.alive ? "true" : "false");
+    out << ",\"ghost\":" << (recovery.ghost ? "true" : "false");
+    out << ",\"inArena\":" << (recovery.inArena ? "true" : "false");
+    out << ",\"corpse\":{\"present\":" << (recovery.corpse.present ? "true" : "false");
+    out << ",\"loaded\":" << (recovery.corpse.loaded ? "true" : "false");
+    out << ",\"mapId\":";
+    if (recovery.corpse.mapId)
+        out << *recovery.corpse.mapId;
+    else
+        out << "null";
+    out << ",\"distanceYards\":";
+    if (recovery.corpse.distanceYards)
+        out << std::fixed << std::setprecision(3) << *recovery.corpse.distanceYards << std::defaultfloat;
+    else
+        out << "null";
+    out << ",\"sameMap\":" << (recovery.corpse.sameMap ? "true" : "false");
+    out << ",\"withinReclaimRadius\":" << (recovery.corpse.withinReclaimRadius ? "true" : "false");
+    out << ",\"reclaimDelayRemainingSeconds\":";
+    if (recovery.corpse.reclaimDelayRemainingSeconds)
+        out << *recovery.corpse.reclaimDelayRemainingSeconds;
+    else
+        out << "null";
+    out << ",\"reclaimReady\":" << (recovery.corpse.reclaimReady ? "true" : "false") << '}';
+    out << ",\"latestRevive\":{\"available\":" << (recovery.latestRevive.available ? "true" : "false");
+    out << ",\"timestampMs\":" << recovery.latestRevive.timestampMs;
+    out << ",\"ageMs\":" << recovery.latestRevive.ageMs;
+    out << ",\"attemptGeneration\":" << recovery.latestRevive.attemptGeneration;
+    out << ",\"currentCycle\":" << (recovery.latestRevive.currentCycle ? "true" : "false");
+    out << ",\"success\":" << (recovery.latestRevive.success ? "true" : "false");
+    out << ",\"aliveAfter\":" << (recovery.latestRevive.aliveAfter ? "true" : "false") << "}}";
+}
 }  // namespace
+
+PlayerbotVerificationRecovery PlayerbotInspector::InspectVerificationRecovery(Player* bot, PlayerbotAI* botAI,
+                                                                              Corpse* corpse)
+{
+    uint64 const observedAtMs = GameTime::GetGameTimeMS().count();
+    PlayerbotVerificationRecovery recovery = {
+        .observedAtMs = observedAtMs,
+        .alive = bot->IsAlive(),
+        .ghost = bot->HasPlayerFlag(PLAYER_FLAGS_GHOST),
+        .inArena = bot->InArena(),
+    };
+
+    PlayerbotReviveAttemptSnapshot const revive = botAI->InspectReviveAttempt();
+    recovery.currentDeathGeneration = revive.currentDeathGeneration;
+    if (revive.available && revive.timestampMs <= observedAtMs)
+    {
+        recovery.latestRevive = {
+            .available = true,
+            .timestampMs = revive.timestampMs,
+            .ageMs = observedAtMs - revive.timestampMs,
+            .attemptGeneration = revive.attemptGeneration,
+            .currentCycle = revive.currentCycle,
+            .success = revive.success,
+            .aliveAfter = revive.aliveAfter,
+        };
+    }
+
+    if (!bot->HasCorpse() && !corpse)
+        return recovery;
+
+    WorldLocation const corpseLocation = bot->GetCorpseLocation();
+    recovery.corpse.present = true;
+    recovery.corpse.loaded = corpse != nullptr;
+    recovery.corpse.mapId = corpse ? corpse->GetMapId() : corpseLocation.GetMapId();
+    recovery.corpse.sameMap = corpse && corpse->IsInMap(bot);
+    if (recovery.corpse.sameMap)
+    {
+        recovery.corpse.distanceYards = corpse->GetExactDist(bot);
+        recovery.corpse.withinReclaimRadius = corpse->IsWithinDist(bot, CORPSE_RECLAIM_RADIUS, true);
+    }
+
+    if (!corpse)
+        return recovery;
+
+    bool const pvp = corpse->GetType() == CORPSE_RESURRECTABLE_PVP;
+    uint64 const reclaimAvailableAt = static_cast<uint64>(corpse->GetGhostTime()) + bot->GetCorpseReclaimDelay(pvp);
+    uint64 const now = GameTime::GetGameTime().count();
+    recovery.corpse.reclaimDelayRemainingSeconds = reclaimAvailableAt > now ? reclaimAvailableAt - now : 0;
+    recovery.corpse.reclaimReady = !recovery.alive && !recovery.inArena && recovery.ghost &&
+                                   *recovery.corpse.reclaimDelayRemainingSeconds == 0 && recovery.corpse.sameMap &&
+                                   recovery.corpse.withinReclaimRadius;
+    return recovery;
+}
 
 std::string PlayerbotInspector::Inspect(Player* bot, PlayerbotAI* botAI)
 {
@@ -951,7 +1080,7 @@ std::string PlayerbotInspector::Serialize(PlayerbotInspection const& inspection)
     out << ",\"personality\":";
     AppendPersonality(out, inspection.personality);
     out << ",\"possessions\":{\"equipment\":";
-    AppendEquipment(out, inspection.equipment, inspection.equipment.size());
+    AppendEquipment(out, inspection.equipment, inspection.equipment.size(), false);
     out << ",\"inventory\":";
     AppendItems(out, inspection.inventory, inspection.inventory.size());
     out << "},\"training\":{\"skills\":";
@@ -1015,8 +1144,13 @@ std::string PlayerbotInspector::SerializeVerification(PlayerbotVerificationInspe
     AppendJsonString(out, inspection.transport.guid);
     out << ",\"entry\":" << inspection.transport.entry << '}';
 
+    out << ",\"movement\":{\"canMove\":" << (inspection.movement.canMove ? "true" : "false") << '}';
+
     out << ",\"travel\":";
     AppendVerificationTravel(out, inspection.travel);
+
+    out << ",\"recovery\":";
+    AppendVerificationRecovery(out, inspection.recovery);
 
     out << ",\"rpgTarget\":";
     AppendRpgTarget(out, inspection.rpgTarget);
@@ -1061,6 +1195,7 @@ std::string PlayerbotInspector::SerializeVerification(PlayerbotVerificationInspe
     out << ",\"economy\":{\"available\":"
         << (inspection.economy.outcome != PlayerbotVerificationEconomyOutcome::Unavailable ? "true" : "false");
     out << ",\"sequence\":" << inspection.economy.sequence;
+    out << ",\"observedAt\":" << inspection.economy.observedAt;
     out << ",\"phase\":";
     AppendJsonString(out, EconomyPhaseName(inspection.economy.phase));
     out << ",\"outcome\":";
@@ -1083,7 +1218,7 @@ std::string PlayerbotInspector::SerializeVerification(PlayerbotVerificationInspe
     out << ",\"quarantined\":" << (inspection.economy.quarantined ? "true" : "false") << '}';
 
     out << ",\"equipment\":{\"items\":";
-    AppendEquipment(out, inspection.equipment, equipmentCompleteness.returnedCount);
+    AppendEquipment(out, inspection.equipment, equipmentCompleteness.returnedCount, true);
     out << ",\"completeness\":";
     AppendVerificationCompleteness(out, equipmentCompleteness);
     out << '}';
@@ -1137,7 +1272,9 @@ PlayerbotVerificationInspection PlayerbotInspector::BuildVerification(Player* bo
                 .moving = bot->isMoving(),
                 .movementState = bot->IsBeingTeleported() ? "teleporting" : (bot->isMoving() ? "moving" : "stationary"),
             },
+        .movement = {.canMove = botAI->CanMove()},
         .travel = InspectVerificationTravel(bot, botAI),
+        .recovery = InspectVerificationRecovery(bot, botAI, bot->GetCorpse()),
         .rpgTarget = InspectRpgTarget(bot, botAI),
         .lastExecutedAction = std::move(lastExecutedAction),
         .actionHistory = published.actionHistory,
@@ -1227,5 +1364,5 @@ std::string PlayerbotInspector::BotNotFound()
 
 std::string PlayerbotInspector::VerificationBotNotFound()
 {
-    return R"({"schemaVersion":4,"ok":false,"error":{"code":"bot_not_found","message":"Bot is not available."}})";
+    return R"({"schemaVersion":5,"ok":false,"error":{"code":"bot_not_found","message":"Bot is not available."}})";
 }
