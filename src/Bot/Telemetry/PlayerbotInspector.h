@@ -11,11 +11,12 @@
 #include <string>
 #include <vector>
 
+#include "Bot/Recovery/PlayerbotRecoveryPolicy.h"
 #include "Bot/Telemetry/PlayerbotVerificationState.h"
 #include "Define.h"
 
 inline constexpr uint32 PLAYERBOT_INSPECTION_SCHEMA_VERSION = 2;
-inline constexpr uint32 PLAYERBOT_VERIFICATION_INSPECTION_SCHEMA_VERSION = 5;
+inline constexpr uint32 PLAYERBOT_VERIFICATION_INSPECTION_SCHEMA_VERSION = 6;
 inline constexpr uint32 PLAYERBOT_VERIFICATION_IDLE_TRAVEL_MAX_MS = 5 * 60 * 1000;
 
 class Player;
@@ -208,6 +209,14 @@ struct PlayerbotVerificationLatestRevive
     uint64 ageMs = 0;
     uint64 attemptGeneration = 0;
     bool currentCycle = false;
+    /*
+     * Why the attempt ended as it did: ineligible, declined, failed, or succeeded.
+     *
+     * `success` alone could not distinguish a bot that tried and failed from one that was still
+     * waiting out its reclaim delay, and the second is what a healthy corpse run looks like. An
+     * observer reading only `success` counted every waiting tick as a failed revive.
+     */
+    PlayerbotReviveOutcome outcome = PlayerbotReviveOutcome::Ineligible;
     bool success = false;
     bool aliveAfter = false;
 };

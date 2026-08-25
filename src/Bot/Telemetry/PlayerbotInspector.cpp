@@ -954,6 +954,7 @@ void AppendVerificationRecovery(std::ostringstream& out, PlayerbotVerificationRe
     out << ",\"ageMs\":" << recovery.latestRevive.ageMs;
     out << ",\"attemptGeneration\":" << recovery.latestRevive.attemptGeneration;
     out << ",\"currentCycle\":" << (recovery.latestRevive.currentCycle ? "true" : "false");
+    out << ",\"outcome\":\"" << PlayerbotReviveOutcomeName(recovery.latestRevive.outcome) << '"';
     out << ",\"success\":" << (recovery.latestRevive.success ? "true" : "false");
     out << ",\"aliveAfter\":" << (recovery.latestRevive.aliveAfter ? "true" : "false") << "}}";
 }
@@ -980,6 +981,7 @@ PlayerbotVerificationRecovery PlayerbotInspector::InspectVerificationRecovery(Pl
             .ageMs = observedAtMs - revive.timestampMs,
             .attemptGeneration = revive.attemptGeneration,
             .currentCycle = revive.currentCycle,
+            .outcome = revive.outcome,
             .success = revive.success,
             .aliveAfter = revive.aliveAfter,
         };
@@ -1357,12 +1359,22 @@ std::string PlayerbotInspector::InspectVerification(Player* bot, PlayerbotAI* bo
     return SerializeVerification(BuildVerification(bot, botAI));
 }
 
+/*
+ * Both error payloads build their version from the same constant the success payload uses.
+ *
+ * They were literals, and a literal cannot be bumped: raising the verification schema left this
+ * one answering with the previous number, so a client that pins the version accepted a successful
+ * inspection and rejected the error that told it the bot was gone. A drift only reachable on the
+ * failure path is one nothing exercises until it matters.
+ */
 std::string PlayerbotInspector::BotNotFound()
 {
-    return R"({"schemaVersion":2,"ok":false,"error":{"code":"bot_not_found","message":"Bot is not available."}})";
+    return "{\"schemaVersion\":" + std::to_string(PLAYERBOT_INSPECTION_SCHEMA_VERSION) +
+           R"(,"ok":false,"error":{"code":"bot_not_found","message":"Bot is not available."}})";
 }
 
 std::string PlayerbotInspector::VerificationBotNotFound()
 {
-    return R"({"schemaVersion":5,"ok":false,"error":{"code":"bot_not_found","message":"Bot is not available."}})";
+    return "{\"schemaVersion\":" + std::to_string(PLAYERBOT_VERIFICATION_INSPECTION_SCHEMA_VERSION) +
+           R"(,"ok":false,"error":{"code":"bot_not_found","message":"Bot is not available."}})";
 }

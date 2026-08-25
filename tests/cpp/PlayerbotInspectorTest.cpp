@@ -166,7 +166,7 @@ TEST(PlayerbotInspectorTest, MissingBotUsesTypedJsonError)
     EXPECT_EQ(PlayerbotInspector::BotNotFound(),
               R"({"schemaVersion":2,"ok":false,"error":{"code":"bot_not_found","message":"Bot is not available."}})");
     EXPECT_EQ(PlayerbotInspector::VerificationBotNotFound(),
-              R"({"schemaVersion":5,"ok":false,"error":{"code":"bot_not_found","message":"Bot is not available."}})");
+              R"({"schemaVersion":6,"ok":false,"error":{"code":"bot_not_found","message":"Bot is not available."}})");
 }
 
 TEST(PlayerbotActionOutcomeTest, FailedActionAttemptIsAuthoritative)
@@ -460,6 +460,7 @@ TEST(PlayerbotInspectorTest, VerificationSerializationIncludesTypedCompleteness)
                         .ageMs = 1000,
                         .attemptGeneration = 7,
                         .currentCycle = false,
+                        .outcome = PlayerbotReviveOutcome::Failed,
                         .success = false,
                         .aliveAfter = false,
                     },
@@ -500,7 +501,7 @@ TEST(PlayerbotInspectorTest, VerificationSerializationIncludesTypedCompleteness)
     std::string const attemptHistory = R"("attempts":[{"sequence":1,"timestampMs":100,"ageMs":60,"success":false,)"
                                        R"("actionName":"follow","nameTruncated":false}])";
 
-    EXPECT_NE(json.find(R"("schemaVersion":5)"), std::string::npos);
+    EXPECT_NE(json.find(R"("schemaVersion":6)"), std::string::npos);
     EXPECT_NE(json.find(R"("master":{"available":true,"guid":"Player-1-3","name":"Pierre","relationshipValid":true})"),
               std::string::npos);
     EXPECT_NE(json.find(R"("attached":true,"guid":"Transport-1","entry":176244)"), std::string::npos);
@@ -513,8 +514,8 @@ TEST(PlayerbotInspectorTest, VerificationSerializationIncludesTypedCompleteness)
                         R"("corpse":{"present":true,"loaded":true,"mapId":0,"distanceYards":12.500,)"
                         R"("sameMap":true,"withinReclaimRadius":true,"reclaimDelayRemainingSeconds":0,)"
                         R"("reclaimReady":true},"latestRevive":{"available":true,"timestampMs":1700000000000,)"
-                        R"("ageMs":1000,"attemptGeneration":7,"currentCycle":false,"success":false,)"
-                        R"("aliveAfter":false}})"),
+                        R"("ageMs":1000,"attemptGeneration":7,"currentCycle":false,"outcome":"failed",)"
+                        R"("success":false,"aliveAfter":false}})"),
               std::string::npos);
     EXPECT_NE(json.find(R"("equipment":{"items":[{"slot":15,"itemId":1001,"name":"Steel Sword","count":1,)"
                         R"("durability":0,"maximumDurability":65,"broken":true}])"),
@@ -741,7 +742,7 @@ TEST_F(PlayerbotInspectorIntegrationTest, VerificationInspectionPreservesLatestA
     PlayerbotAI* botAI = AddBot(bot);
     ASSERT_NE(botAI, nullptr);
     uint64 const timestampMs = GameTime::GetGameTimeMS().count();
-    botAI->RecordReviveAttempt(timestampMs, false, false);
+    botAI->RecordReviveAttempt(timestampMs, PlayerbotReviveOutcome::Failed, false);
 
     PlayerbotVerificationRecovery const recovery = PlayerbotInspector::BuildVerification(bot, botAI).recovery;
 
@@ -753,8 +754,46 @@ TEST_F(PlayerbotInspectorIntegrationTest, VerificationInspectionPreservesLatestA
     EXPECT_EQ(recovery.latestRevive.ageMs, recovery.observedAtMs - recovery.latestRevive.timestampMs);
     EXPECT_EQ(recovery.latestRevive.attemptGeneration, 0U);
     EXPECT_TRUE(recovery.latestRevive.currentCycle);
+    EXPECT_EQ(recovery.latestRevive.outcome, PlayerbotReviveOutcome::Failed);
     EXPECT_FALSE(recovery.latestRevive.success);
     EXPECT_FALSE(recovery.latestRevive.aliveAfter);
+}
+
+/*
+ * The distinction the whole outcome enum exists for. A ghost waiting out its reclaim delay is not
+ * failing to revive, and an observer must be able to tell the two apart from the snapshot alone.
+ */
+TEST_F(PlayerbotInspectorIntegrationTest, VerificationInspectionSeparatesWaitingToReviveFromFailingTo)
+{
+    TestPlayer* bot = CreateTestPlayer(101, "WaitingBot");
+    PlayerbotAI* botAI = AddBot(bot);
+    ASSERT_NE(botAI, nullptr);
+    botAI->RecordReviveAttempt(GameTime::GetGameTimeMS().count(), PlayerbotReviveOutcome::Ineligible, false);
+
+    PlayerbotVerificationRecovery const waiting = PlayerbotInspector::BuildVerification(bot, botAI).recovery;
+    EXPECT_EQ(waiting.latestRevive.outcome, PlayerbotReviveOutcome::Ineligible);
+    EXPECT_FALSE(waiting.latestRevive.success);
+
+    botAI->RecordReviveAttempt(GameTime::GetGameTimeMS().count(), PlayerbotReviveOutcome::Failed, false);
+    PlayerbotVerificationRecovery const failing = PlayerbotInspector::BuildVerification(bot, botAI).recovery;
+    EXPECT_EQ(failing.latestRevive.outcome, PlayerbotReviveOutcome::Failed);
+    EXPECT_FALSE(failing.latestRevive.success);
+
+    // Both are unsuccessful, so `success` alone cannot separate them. The outcome must.
+    EXPECT_NE(waiting.latestRevive.outcome, failing.latestRevive.outcome);
+}
+
+TEST_F(PlayerbotInspectorIntegrationTest, VerificationInspectionDerivesSuccessFromTheOutcome)
+{
+    TestPlayer* bot = CreateTestPlayer(102, "RevivedBot");
+    PlayerbotAI* botAI = AddBot(bot);
+    ASSERT_NE(botAI, nullptr);
+    botAI->RecordReviveAttempt(GameTime::GetGameTimeMS().count(), PlayerbotReviveOutcome::Succeeded, true);
+
+    PlayerbotVerificationRecovery const recovery = PlayerbotInspector::BuildVerification(bot, botAI).recovery;
+    EXPECT_EQ(recovery.latestRevive.outcome, PlayerbotReviveOutcome::Succeeded);
+    EXPECT_TRUE(recovery.latestRevive.success);
+    EXPECT_TRUE(recovery.latestRevive.aliveAfter);
 }
 
 TEST_F(PlayerbotInspectorIntegrationTest, VerificationRecoveryRejectsSameMapIdFromAnotherInstance)
