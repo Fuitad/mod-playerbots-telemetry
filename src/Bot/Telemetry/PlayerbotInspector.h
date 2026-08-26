@@ -16,7 +16,7 @@
 #include "Define.h"
 
 inline constexpr uint32 PLAYERBOT_INSPECTION_SCHEMA_VERSION = 2;
-inline constexpr uint32 PLAYERBOT_VERIFICATION_INSPECTION_SCHEMA_VERSION = 6;
+inline constexpr uint32 PLAYERBOT_VERIFICATION_INSPECTION_SCHEMA_VERSION = 7;
 inline constexpr uint32 PLAYERBOT_VERIFICATION_IDLE_TRAVEL_MAX_MS = 5 * 60 * 1000;
 
 class Player;
@@ -147,6 +147,10 @@ struct PlayerbotVerificationTransport
 struct PlayerbotVerificationMovement
 {
     bool canMove = false;
+    // A mounted player cannot cast anything without SPELL_ATTR0_ALLOW_WHILE_MOUNTED, so the core
+    // answers SPELL_FAILED_NOT_MOUNTED and a craft, gather or heal simply never starts. Report it
+    // so a stalled bot can be told apart from one that is merely idle.
+    bool mounted = false;
 };
 
 struct PlayerbotVerificationTravelPoint

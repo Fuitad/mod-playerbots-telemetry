@@ -1146,7 +1146,8 @@ std::string PlayerbotInspector::SerializeVerification(PlayerbotVerificationInspe
     AppendJsonString(out, inspection.transport.guid);
     out << ",\"entry\":" << inspection.transport.entry << '}';
 
-    out << ",\"movement\":{\"canMove\":" << (inspection.movement.canMove ? "true" : "false") << '}';
+    out << ",\"movement\":{\"canMove\":" << (inspection.movement.canMove ? "true" : "false")
+        << ",\"mounted\":" << (inspection.movement.mounted ? "true" : "false") << '}';
 
     out << ",\"travel\":";
     AppendVerificationTravel(out, inspection.travel);
@@ -1274,7 +1275,7 @@ PlayerbotVerificationInspection PlayerbotInspector::BuildVerification(Player* bo
                 .moving = bot->isMoving(),
                 .movementState = bot->IsBeingTeleported() ? "teleporting" : (bot->isMoving() ? "moving" : "stationary"),
             },
-        .movement = {.canMove = botAI->CanMove()},
+        .movement = {.canMove = botAI->CanMove(), .mounted = bot->IsMounted()},
         .travel = InspectVerificationTravel(bot, botAI),
         .recovery = InspectVerificationRecovery(bot, botAI, bot->GetCorpse()),
         .rpgTarget = InspectRpgTarget(bot, botAI),

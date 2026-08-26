@@ -166,7 +166,7 @@ TEST(PlayerbotInspectorTest, MissingBotUsesTypedJsonError)
     EXPECT_EQ(PlayerbotInspector::BotNotFound(),
               R"({"schemaVersion":2,"ok":false,"error":{"code":"bot_not_found","message":"Bot is not available."}})");
     EXPECT_EQ(PlayerbotInspector::VerificationBotNotFound(),
-              R"({"schemaVersion":6,"ok":false,"error":{"code":"bot_not_found","message":"Bot is not available."}})");
+              R"({"schemaVersion":7,"ok":false,"error":{"code":"bot_not_found","message":"Bot is not available."}})");
 }
 
 TEST(PlayerbotActionOutcomeTest, FailedActionAttemptIsAuthoritative)
@@ -428,7 +428,7 @@ TEST(PlayerbotInspectorTest, VerificationSerializationIncludesTypedCompleteness)
                 .movementState = "moving",
             },
         .transport = {.attached = true, .guid = "Transport-1", .entry = 176244},
-        .movement = {.canMove = true},
+        .movement = {.canMove = true, .mounted = true},
         .travel =
             {
                 .available = true,
@@ -501,11 +501,11 @@ TEST(PlayerbotInspectorTest, VerificationSerializationIncludesTypedCompleteness)
     std::string const attemptHistory = R"("attempts":[{"sequence":1,"timestampMs":100,"ageMs":60,"success":false,)"
                                        R"("actionName":"follow","nameTruncated":false}])";
 
-    EXPECT_NE(json.find(R"("schemaVersion":6)"), std::string::npos);
+    EXPECT_NE(json.find(R"("schemaVersion":7)"), std::string::npos);
     EXPECT_NE(json.find(R"("master":{"available":true,"guid":"Player-1-3","name":"Pierre","relationshipValid":true})"),
               std::string::npos);
     EXPECT_NE(json.find(R"("attached":true,"guid":"Transport-1","entry":176244)"), std::string::npos);
-    EXPECT_NE(json.find(R"("movement":{"canMove":true})"), std::string::npos);
+    EXPECT_NE(json.find(R"("movement":{"canMove":true,"mounted":true})"), std::string::npos);
     EXPECT_NE(json.find(R"("travel":{"available":true,"status":"cooldown","idleNoDestination":true,)"
                         R"("destination":null,"timeLeftMs":120000)"),
               std::string::npos);
@@ -705,6 +705,23 @@ TEST_F(PlayerbotInspectorIntegrationTest, VerificationInspectionIncludesOrdinary
     EXPECT_FLOAT_EQ(travel.lastMovement.point.x, 10.0f);
 
     target->releaseVisitors();
+}
+
+TEST_F(PlayerbotInspectorIntegrationTest, VerificationInspectionReportsWhetherTheBotIsMounted)
+{
+    TestPlayer* bot = CreateTestPlayer(100, "InspectorBot");
+    PlayerbotAI* botAI = AddBot(bot);
+    ASSERT_NE(botAI, nullptr);
+
+    EXPECT_FALSE(PlayerbotInspector::BuildVerification(bot, botAI).movement.mounted);
+
+    bot->SetUnitFlag(UNIT_FLAG_MOUNT);
+    ASSERT_TRUE(bot->IsMounted());
+
+    EXPECT_TRUE(PlayerbotInspector::BuildVerification(bot, botAI).movement.mounted);
+
+    bot->RemoveUnitFlag(UNIT_FLAG_MOUNT);
+    EXPECT_FALSE(PlayerbotInspector::BuildVerification(bot, botAI).movement.mounted);
 }
 
 TEST_F(PlayerbotInspectorIntegrationTest, VerificationInspectionReportsNullTravelAsIdleWithoutHidingMovement)
