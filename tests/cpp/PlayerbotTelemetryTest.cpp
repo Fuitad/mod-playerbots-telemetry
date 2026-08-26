@@ -425,6 +425,76 @@ TEST(PlayerbotTelemetryTest, EconomyNamesGlyphAndGemChainGroupsInsteadOfFallingB
     EXPECT_EQ(json.find("\"kind\":\"exact_reagent\",\"exactItemId\":0"), std::string::npos);
 }
 
+TEST(PlayerbotTelemetryTest, EconomyTagsTraceParticipantsWithTheNamespaceTheirGuidBelongsTo)
+{
+    // Live 2026-08-26: a vendor purchase wrote the vendor's CREATURE spawn GUID into the same
+    // counterparty field that otherwise holds a character GUID. The two namespaces overlap, so
+    // Medivh resolved the vendor as a bot, found no such bot, and rejected the whole snapshot,
+    // taking the realm map down with the economy ledger.
+    PlayerbotEconomyTelemetrySource source;
+    source.observedAt = 1'030u;
+    source.serializedAt = 1'060u;
+    EconomyChain chain;
+    chain.publicId = "chn_0123456789abcdef";
+    chain.marketId = 7u;
+    chain.group = EconomySubstitutionGroup::Gem(2u);
+    chain.demandQuantity = 1u;
+    chain.remainingQuantity = 1u;
+    source.coordinator.chains.push_back(chain);
+    source.trace.generation = 1u;
+    source.trace.totalCount = 1u;
+    source.trace.events.push_back({
+        .publicId = "evt_0011223344556677",
+        .chainPublicId = "chn_0123456789abcdef",
+        .sequence = 1u,
+        .actorGuid = 42u,
+        .counterpartyGuid = 204u,
+        .counterpartyKind = EconomyCounterpartyKind::Creature,
+        .itemId = 2'447u,
+        .quantity = 5u,
+        .occurredAt = 1'040u,
+        .kind = EconomyTraceKind::Purchased,
+    });
+
+    std::string const json = PlayerbotTelemetry::SerializeEconomy(source);
+
+    EXPECT_NE(json.find(R"("participants":[{"role":"buyer","kind":"bot","actorMappingInputGuid":42},)"
+                        R"({"role":"seller","kind":"creature","actorMappingInputGuid":204}])"),
+              std::string::npos);
+}
+
+TEST(PlayerbotTelemetryTest, EconomyTagsABotCounterpartyAsABotRatherThanLeavingItAmbiguous)
+{
+    PlayerbotEconomyTelemetrySource source;
+    source.observedAt = 1'030u;
+    source.serializedAt = 1'060u;
+    EconomyChain chain;
+    chain.publicId = "chn_0123456789abcdef";
+    chain.marketId = 7u;
+    chain.group = EconomySubstitutionGroup::Gem(2u);
+    chain.demandQuantity = 1u;
+    chain.remainingQuantity = 1u;
+    source.coordinator.chains.push_back(chain);
+    source.trace.generation = 1u;
+    source.trace.totalCount = 1u;
+    source.trace.events.push_back({
+        .publicId = "evt_0011223344556677",
+        .chainPublicId = "chn_0123456789abcdef",
+        .sequence = 1u,
+        .actorGuid = 42u,
+        .counterpartyGuid = 43u,
+        .itemId = 2'447u,
+        .quantity = 5u,
+        .occurredAt = 1'040u,
+        .kind = EconomyTraceKind::Purchased,
+    });
+
+    std::string const json = PlayerbotTelemetry::SerializeEconomy(source);
+
+    EXPECT_NE(json.find(R"({"role":"seller","kind":"bot","actorMappingInputGuid":43})"), std::string::npos);
+    EXPECT_EQ(json.find(R"("kind":"creature")"), std::string::npos);
+}
+
 TEST(PlayerbotTelemetryTest, EconomyCacheReusesSerializationUntilSourceGenerationChanges)
 {
     PlayerbotEconomyTelemetryCache cache;

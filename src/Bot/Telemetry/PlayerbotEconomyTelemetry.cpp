@@ -830,11 +830,16 @@ std::string PlayerbotTelemetry::SerializeEconomy(PlayerbotEconomyTelemetrySource
         else if (event.kind == EconomyTraceKind::FinalUse)
             role = "consumer";
         AppendJsonString(out, role);
-        out << ",\"actorMappingInputGuid\":" << event.actorGuid << '}';
+        // The acting side of a trace event is always the bot itself.
+        out << ",\"kind\":\"bot\",\"actorMappingInputGuid\":" << event.actorGuid << '}';
         if (event.counterpartyGuid)
         {
             out << ",{\"role\":";
             AppendJsonString(out, role == "seller" ? "buyer" : "seller");
+            // A counterparty GUID counter is meaningless without the namespace it came from:
+            // a vendor purchase names a creature spawn, everything else names another bot.
+            out << ",\"kind\":";
+            AppendJsonString(out, event.counterpartyKind == EconomyCounterpartyKind::Creature ? "creature" : "bot");
             out << ",\"actorMappingInputGuid\":" << event.counterpartyGuid << '}';
         }
         out << "],\"unitPriceCopper\":" << event.unitPriceCopper;
