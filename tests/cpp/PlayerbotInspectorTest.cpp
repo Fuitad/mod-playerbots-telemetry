@@ -73,14 +73,15 @@ TEST(PlayerbotInspectorTest, EmptySectionsUseExplicitStableTypes)
 
     EXPECT_EQ(
         PlayerbotInspector::Serialize(inspection),
-        R"({"schemaVersion":2,"ok":true,"bot":{"name":"Unoccupied","level":1,"raceId":11,"classId":1,)"
+        R"({"schemaVersion":3,"ok":true,"bot":{"name":"Unoccupied","level":1,"raceId":11,"classId":1,)"
         R"("xp":0,"nextLevelXp":0},"behavior":{"activity":"inactive","state":"non-combat","action":"",)"
         R"("strategies":[]},"combat":{"inCombat":false,"target":null,"attackers":[]},"travel":{"available":false,)"
         R"("status":"unavailable","destination":null,"timeLeftMs":null,"retry":{"move":0,"extend":0}},)"
         R"("rpgTarget":{"available":false,"type":null,"guid":null,"entry":null,"name":null,"npcFlags":null,)"
         R"("distanceYards":null,"moving":null},"personality":{"available":false,"version":null,)"
         R"("craftingAffinity":null,"explorationAffinity":null,)"
-        R"("sociability":null,"voice":null},"possessions":{"equipment":[],"inventory":[]},"training":{"skills":[],)"
+        R"("sociability":null,"voice":null},"finance":{"moneyCopper":0},)"
+        R"("possessions":{"equipment":[],"bags":[],"inventory":[]},"training":{"skills":[],)"
         R"("professions":[]}})");
 }
 
@@ -131,7 +132,9 @@ TEST(PlayerbotInspectorTest, EscapesNamesAndSerializesDetailedSections)
                 .sociability = 50,
                 .voice = "wry",
             },
+        .moneyCopper = 478117,
         .equipment = {{.slot = 15, .itemId = 1001, .name = "Steel Sword", .count = 1}},
+        .bags = {{.slot = 19, .itemId = 4496, .name = "Small \"Brown\" Pouch", .capacity = 6}},
         .inventory = {{.itemId = 2002, .name = "Potion", .count = 4}},
         .skills = {{.id = 43, .name = "Swords", .value = 400, .maximum = 400}},
         .professions = {{.id = 164, .name = "Blacksmithing", .value = 450, .maximum = 450}},
@@ -157,6 +160,9 @@ TEST(PlayerbotInspectorTest, EscapesNamesAndSerializesDetailedSections)
               std::string::npos);
     EXPECT_NE(json.find(R"("equipment":[{"slot":15,"itemId":1001,"name":"Steel Sword","count":1}])"),
               std::string::npos);
+    EXPECT_NE(json.find(R"("finance":{"moneyCopper":478117})"), std::string::npos);
+    EXPECT_NE(json.find(R"("bags":[{"slot":19,"itemId":4496,"name":"Small \"Brown\" Pouch","capacity":6}])"),
+              std::string::npos);
     EXPECT_NE(json.find(R"("professions":[{"id":164,"name":"Blacksmithing","value":450,"maximum":450}])"),
               std::string::npos);
 }
@@ -164,7 +170,7 @@ TEST(PlayerbotInspectorTest, EscapesNamesAndSerializesDetailedSections)
 TEST(PlayerbotInspectorTest, MissingBotUsesTypedJsonError)
 {
     EXPECT_EQ(PlayerbotInspector::BotNotFound(),
-              R"({"schemaVersion":2,"ok":false,"error":{"code":"bot_not_found","message":"Bot is not available."}})");
+              R"({"schemaVersion":3,"ok":false,"error":{"code":"bot_not_found","message":"Bot is not available."}})");
     EXPECT_EQ(PlayerbotInspector::VerificationBotNotFound(),
               R"({"schemaVersion":7,"ok":false,"error":{"code":"bot_not_found","message":"Bot is not available."}})");
 }

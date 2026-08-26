@@ -15,7 +15,7 @@
 #include "Bot/Telemetry/PlayerbotVerificationState.h"
 #include "Define.h"
 
-inline constexpr uint32 PLAYERBOT_INSPECTION_SCHEMA_VERSION = 2;
+inline constexpr uint32 PLAYERBOT_INSPECTION_SCHEMA_VERSION = 3;
 inline constexpr uint32 PLAYERBOT_VERIFICATION_INSPECTION_SCHEMA_VERSION = 7;
 inline constexpr uint32 PLAYERBOT_VERIFICATION_IDLE_TRAVEL_MAX_MS = 5 * 60 * 1000;
 
@@ -74,6 +74,14 @@ struct PlayerbotInspectionEquipment
     uint32 durability = 0;
     uint32 maximumDurability = 0;
     bool broken = false;
+};
+
+struct PlayerbotInspectionBag
+{
+    uint32 slot = 0;
+    uint32 itemId = 0;
+    std::string name;
+    uint32 capacity = 0;
 };
 
 struct PlayerbotInspectionItem
@@ -289,7 +297,9 @@ struct PlayerbotInspection
     PlayerbotInspectionTravel travel;
     PlayerbotInspectionRpgTarget rpgTarget;
     PlayerbotInspectionPersonality personality;
+    uint32 moneyCopper = 0;
     std::vector<PlayerbotInspectionEquipment> equipment;
+    std::vector<PlayerbotInspectionBag> bags;
     std::vector<PlayerbotInspectionItem> inventory;
     std::vector<PlayerbotInspectionSkill> skills;
     std::vector<PlayerbotInspectionSkill> professions;

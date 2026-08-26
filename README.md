@@ -11,7 +11,9 @@ and remote command hooks.
 The module owns the `telemetry,0` and `inspect,<guid>` command responses. It reads public Personality and Economy
 interfaces and never grants gameplay authority to a telemetry caller.
 The inspection response reports the current RPG target type, GUID, entry, name, NPC flags, distance, and movement
-state when the target is available.
+state when the target is available. Inspection schema version 3 adds the bot's coinage under `finance.moneyCopper`
+and its four equipped containers under `possessions.bags`, each with its slot, item identity, name, and capacity.
+The default backpack is not an item and is never reported there.
 Verification inspection schema version 7 exposes the same `rpgTarget` section to typed MCP consumers. It also
 reports movement capability independently from TravelMgr state, mount state (the core refuses every cast from a
 mounted player that is not flagged castable while mounted), explicit idle travel cooldowns, equipped item

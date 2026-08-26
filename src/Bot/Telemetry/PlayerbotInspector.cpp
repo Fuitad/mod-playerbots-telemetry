@@ -390,6 +390,16 @@ void InspectPossessions(Player* bot, PlayerbotInspection& inspection)
         if (!bag)
             continue;
 
+        // The default backpack is not an item and occupies no bag slot, so only the four equipped
+        // containers are reported here. They are carried separately from inventory because a bag is
+        // a property of the bot rather than one of the stacks it holds.
+        inspection.bags.push_back({
+            .slot = bagSlot,
+            .itemId = bag->GetEntry(),
+            .name = ItemName(bag),
+            .capacity = bag->GetBagSize(),
+        });
+
         for (uint32 slot = 0; slot < bag->GetBagSize(); ++slot)
             AddInventoryItem(inventory, bag->GetItemByPos(slot));
     }
@@ -725,6 +735,21 @@ void AppendEquipment(std::ostringstream& out, std::vector<PlayerbotInspectionEqu
     out << ']';
 }
 
+void AppendBags(std::ostringstream& out, std::vector<PlayerbotInspectionBag> const& bags)
+{
+    out << '[';
+    for (std::size_t index = 0; index < bags.size(); ++index)
+    {
+        if (index)
+            out << ',';
+        PlayerbotInspectionBag const& bag = bags[index];
+        out << "{\"slot\":" << bag.slot << ",\"itemId\":" << bag.itemId << ",\"name\":";
+        AppendJsonString(out, bag.name);
+        out << ",\"capacity\":" << bag.capacity << '}';
+    }
+    out << ']';
+}
+
 void AppendItems(std::ostringstream& out, std::vector<PlayerbotInspectionItem> const& items, std::size_t limit)
 {
     out << '[';
@@ -1040,6 +1065,7 @@ std::string PlayerbotInspector::Inspect(Player* bot, PlayerbotAI* botAI)
         .travel = InspectTravel(bot, botAI),
         .rpgTarget = InspectRpgTarget(bot, botAI),
         .personality = InspectPersonality(bot),
+        .moneyCopper = bot->GetMoney(),
     };
 
     GuidVector const attackers = botAI->GetAiObjectContext()->GetValue<GuidVector>("attackers")->Get();
@@ -1081,8 +1107,11 @@ std::string PlayerbotInspector::Serialize(PlayerbotInspection const& inspection)
     AppendRpgTarget(out, inspection.rpgTarget);
     out << ",\"personality\":";
     AppendPersonality(out, inspection.personality);
+    out << ",\"finance\":{\"moneyCopper\":" << inspection.moneyCopper << '}';
     out << ",\"possessions\":{\"equipment\":";
     AppendEquipment(out, inspection.equipment, inspection.equipment.size(), false);
+    out << ",\"bags\":";
+    AppendBags(out, inspection.bags);
     out << ",\"inventory\":";
     AppendItems(out, inspection.inventory, inspection.inventory.size());
     out << "},\"training\":{\"skills\":";
