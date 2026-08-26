@@ -509,7 +509,12 @@ void AppendSubstitutionGroup(std::ostringstream& out, EconomySubstitutionGroup c
     out << ",\"tier\":" << static_cast<uint32>(group.tier);
     out << ",\"effectFamily\":" << group.effectFamily;
     out << ",\"enhancementTarget\":" << group.enhancementTarget;
-    out << ",\"valueBand\":" << group.valueBand << '}';
+    out << ",\"valueBand\":" << group.valueBand;
+    // A glyph is identified by the spell it grants, and nothing outside the client's DBC files
+    // maps that spell back to an item, so a reader given only the spell cannot name the glyph.
+    // The gem colour is the whole of a gem demand for the same reason.
+    out << ",\"glyphItemId\":" << group.glyphItemId;
+    out << ",\"gemColor\":" << group.gemColor << '}';
 }
 
 void AppendObservation(std::ostringstream& out, PlayerbotVerificationEconomyObservation const& value)
